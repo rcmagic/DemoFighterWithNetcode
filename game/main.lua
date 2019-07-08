@@ -16,8 +16,8 @@ local InputSystem =
 {
 	MAX_INPUT_FRAMES = 60,			-- The maximum number of input commands stored in the player controller ring buff.
 
-	localPlayerIndex 	= 2,		-- The player index for the player on the local client.
-	remotePlayerIndex 	= 1,		-- The player index for the player on the remote client.
+	localPlayerIndex 	= 1,		-- The player index for the player on the local client.
+	remotePlayerIndex 	= 2,		-- The player index for the player on the remote client.
 
 	keyboardState = {}, 			-- System keyboard state. This is updated in love callbacks love.keypressed and love.keyreleased.
 
@@ -189,9 +189,24 @@ function love.draw()
 	-- Move draw everything in world coordinates
 	love.graphics.translate(1024 / 2, 768 - GROUND_HEIGHT)
 
+	-- Create drawing priority list.
+	local drawList = {PlayerObjectList[1], PlayerObjectList[2]}
+	
+	-- Comparison function
+	local comparePlayers = function(a, b)
+		if a.currentState.attack then
+			return false
+		end
+		return true
+	end
 
-	PlayerObjectList[1]:Draw()
-	PlayerObjectList[2]:Draw()
+	-- Sort based on priority
+	table.sort(drawList, comparePlayers)
+
+	-- Draw players from the sorted list
+	for index, player in pairs(drawList) do
+		player:Draw()
+	end
 
 	love.graphics.pop()
 
