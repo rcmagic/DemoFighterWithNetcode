@@ -70,14 +70,8 @@ local PlayerColors =
 function PlayerObject:Draw()
 	love.graphics.push()
 
-
 	love.graphics.translate(self.physics.x, -self.physics.y)
-
-
-	-- Setting different colors for each players so we can tell them apart.
-	--love.graphics.setColor(PlayerColors[self.playerIndex])
     love.graphics.setColor(1,1,1)
-    --love.graphics.rectangle('fill', -25, -50, 50, 50)
 
     local xOff = -25
     local yOff = -152
@@ -93,29 +87,31 @@ function PlayerObject:Draw()
     if self.currentTimeline then
         local currentImage = self:GetImageFromTimeline(self.currentTimeline, self.currentFrame)
         love.graphics.draw(currentImage.image, currentImage.x, currentImage.y)
-
-        local damageBoxList = self:GetDamageBoxFromTimeline(self.currentTimeline, self.currentFrame)
-
-        if SHOW_HITBOXES then
-            -- Draw damage collision boxes
-            for index, box in pairs(damageBoxList) do
-                love.graphics.setColor(0,0,1, 0.5)
-                love.graphics.rectangle('fill', box.x, -box.y, box.r - box.x, box.y - box.b)
-            end
-
-            local attackBoxList = self:GetAttackBoxFromTimeline(self.currentTimeline, self.currentFrame)
-
-            -- Draw attack collision boxes
-            for index, box in pairs(attackBoxList) do
-                love.graphics.setColor(1,0,0, 0.5)
-                love.graphics.rectangle('fill', box.x, -box.y, box.r - box.x, box.y - box.b)
-            end
-
-            love.graphics.setColor(1,1,1)
-        end
     end
 
-	love.graphics.pop()
+    love.graphics.pop()
+    
+    if SHOW_HITBOXES then
+        local damageBoxList = self:GetDamageBoxFromTimeline(self.currentTimeline, self.currentFrame)
+
+        -- Draw damage collision boxes
+        for index, box in pairs(damageBoxList) do
+            box = TranslateBox(box, self.physics.x, self.physics.y, self.facing)
+            love.graphics.setColor(0,0,1, 0.5)
+            love.graphics.rectangle('fill', box.x, -box.y, box.r - box.x, box.y - box.b)
+        end
+
+        local attackBoxList = self:GetAttackBoxFromTimeline(self.currentTimeline, self.currentFrame)
+
+        -- Draw attack collision boxes
+        for index, box in pairs(attackBoxList) do
+            box = TranslateBox(box, self.physics.x, self.physics.y, self.facing)
+            love.graphics.setColor(1,0,0, 0.5)
+            love.graphics.rectangle('fill', box.x, -box.y, box.r - box.x, box.y - box.b)
+        end
+
+        love.graphics.setColor(1,1,1)
+    end
 end
 
 
@@ -240,7 +236,11 @@ function CheckIfBoxesCollide(box1, box2)
     return not (box1.x > box2.r or box2.x > box1.r or box1.y < box2.b or box2.y < box1.b)
 end
 
-function TranslateBox(box, x, y) 
+function TranslateBox(box, x, y, flipped) 
+    if flipped then
+        return { x = x - box.r, y = box.y + y, r = x - box.x, b = box.b + y}
+    end
+
     return { x = box.x + x, y = box.y + y, r = box.r + x, b = box.b + y}
 end
 function PlayerObject:IsAttacking()
@@ -254,10 +254,12 @@ function PlayerObject:CheckIfHit(enemy)
     local attackBoxList = self:GetAttackBoxFromTimeline(enemy.currentTimeline, enemy.currentFrame)
     local damageBoxList = self:GetDamageBoxFromTimeline(self.currentTimeline, self.currentFrame)
 
+
+
     for index, box1 in pairs(attackBoxList) do
         -- Check against all damage boxes
         for index2, box2 in pairs(damageBoxList) do
-            if CheckIfBoxesCollide(TranslateBox(box1, enemy.physics.x, enemy.physics.y), TranslateBox(box2, self.physics.x, self.physics.y)) then
+            if CheckIfBoxesCollide(TranslateBox(box1, enemy.physics.x, enemy.physics.y, enemy.facing), TranslateBox(box2, self.physics.x, self.physics.y, self.facing)) then
                 return true
             end
         end

@@ -16,8 +16,8 @@ local InputSystem =
 {
 	MAX_INPUT_FRAMES = 60,			-- The maximum number of input commands stored in the player controller ring buff.
 
-	localPlayerIndex 	= 1,		-- The player index for the player on the local client.
-	remotePlayerIndex 	= 2,		-- The player index for the player on the remote client.
+	localPlayerIndex 	= 2,		-- The player index for the player on the local client.
+	remotePlayerIndex 	= 1,		-- The player index for the player on the remote client.
 
 	keyboardState = {}, 			-- System keyboard state. This is updated in love callbacks love.keypressed and love.keyreleased.
 
@@ -146,18 +146,27 @@ function love.update(dt)
 	PlayerObjectList[1]:PreUpdate()
 	PlayerObjectList[2]:PreUpdate()
 
-	-- Handle collisions.
-	if not PlayerObjectList[1].attackHit and PlayerObjectList[1]:IsAttacking() and PlayerObjectList[2]:CheckIfHit(PlayerObjectList[1]) then
-		local hitstop = 10
-		PlayerObjectList[2].events.AttackedThisFrame = true
-		PlayerObjectList[2].events.hitstun = 20
-		PlayerObjectList[2].events.hitstop = hitstop
+	-- Hitstop is constant among all attacks for now
+	local hitstop = 10
 
-		PlayerObjectList[1].events.HitEnemyThisFrame = true
-		PlayerObjectList[1].events.hitstop = hitstop
-		PlayerObjectList[1].attackHit = true
+	for playerIndex1, attacker in pairs(PlayerObjectList) do
+		-- Handle collisions.
+		if not attacker.attackHit and attacker:IsAttacking() then
+			for playerIndex2, defender in pairs(PlayerObjectList) do
+				if playerIndex1 ~= playerIndex2 and defender:CheckIfHit(attacker) then
+					defender.events.AttackedThisFrame = true
+
+					-- These events are only valid until the end of the frame.
+					defender.events.hitstun = 20
+					defender.events.hitstop = hitstop
+
+					attacker.events.HitEnemyThisFrame = true
+					attacker.events.hitstop = hitstop
+					attacker.attackHit = true
+				end
+			end
+		end
 	end
-
 	-- Update the player objects.
 	PlayerObjectList[1]:Update()
 	PlayerObjectList[2]:Update()
