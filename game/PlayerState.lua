@@ -1,4 +1,4 @@
-
+-- Makes a shallow copy of a table. Deep copies of child tables will not be duplicate.
 function table.copy(t)
 	if t == nil then return nil end	
 	local t2 = {}
@@ -8,6 +8,7 @@ function table.copy(t)
 	return t2
 end
 
+-- Recursively makes a deep copy of a table. Assumes there are no cycles.
 function table.deep_copy(t)
 	if not t then return nil end
 	local t2 = {}
@@ -21,8 +22,10 @@ function table.deep_copy(t)
 	return t2
 end
 
+-- Base table for all tables that are inheritable.
 Object = {}
--- Boiler late for making it object inheritance and instancing possible
+
+-- Boiler plate for making object inheritance and instancing possible
 function Object:New(o)
 	o = o or {}
 	setmetatable(o, self)
@@ -32,7 +35,7 @@ end
 
 PlayerState = {}
 
-
+-- Base table for player states.
 PlayerState = Object:New()
 
 -- Called when the transitioning into this state.
