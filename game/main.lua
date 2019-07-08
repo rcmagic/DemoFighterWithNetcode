@@ -100,8 +100,10 @@ function love.keypressed(key, scancode, isrepeat)
 	elseif key == 'g' then
 		InputSystem.keyboardState.attack = true
 	end
-
-	if key == 'f3' then
+	
+	if key == 'f4' then
+		SHOW_HITBOXES = not SHOW_HITBOXES
+	elseif key == 'f3' then
 		paused = not paused
 	elseif key == 'f2' then
 		frameStep = true
@@ -145,8 +147,8 @@ function love.update(dt)
 	PlayerObjectList[2]:PreUpdate()
 
 	-- Handle collisions.
-	if not PlayerObjectList[1].attackHit and PlayerObjectList[1]:IsAttacking() then
-		local hitstop = 15
+	if not PlayerObjectList[1].attackHit and PlayerObjectList[1]:IsAttacking() and PlayerObjectList[2]:CheckIfHit(PlayerObjectList[1]) then
+		local hitstop = 10
 		PlayerObjectList[2].events.AttackedThisFrame = true
 		PlayerObjectList[2].events.hitstun = 20
 		PlayerObjectList[2].events.hitstop = hitstop

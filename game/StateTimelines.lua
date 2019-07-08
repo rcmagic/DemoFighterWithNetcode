@@ -25,7 +25,10 @@ Timelines =
             { sequence = "stand", index = 1, duration = 5 }
         },
 
-        damageBoxes = {},
+        damageBoxes = 
+        {
+            {start = 0, last = 5, x = -40, y = 80, r = 40, b = 0}
+        },
         attackBoxes = {}
     
     },
@@ -41,8 +44,15 @@ Timelines =
             { sequence = "attack", index = 3, duration = 15 },
         },
 
-        damageBoxes = {},
-        attackBoxes = {},
+        damageBoxes = 
+        {
+            {start = 0, last = 26, x = -40, y = 80, r = 40, b = 0}
+        },
+
+        attackBoxes = 
+        {
+            {start = 8, last = 11, x = 32, y = 80, r = 120, b = -20}
+        },
     
     }
 }

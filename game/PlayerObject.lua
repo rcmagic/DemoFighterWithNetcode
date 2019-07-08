@@ -93,6 +93,26 @@ function PlayerObject:Draw()
     if self.currentTimeline then
         local currentImage = self:GetImageFromTimeline(self.currentTimeline, self.currentFrame)
         love.graphics.draw(currentImage.image, currentImage.x, currentImage.y)
+
+        local damageBoxList = self:GetDamageBoxFromTimeline(self.currentTimeline, self.currentFrame)
+
+        if SHOW_HITBOXES then
+            -- Draw damage collision boxes
+            for index, box in pairs(damageBoxList) do
+                love.graphics.setColor(0,0,1, 0.5)
+                love.graphics.rectangle('fill', box.x, -box.y, box.r - box.x, box.y - box.b)
+            end
+
+            local attackBoxList = self:GetAttackBoxFromTimeline(self.currentTimeline, self.currentFrame)
+
+            -- Draw attack collision boxes
+            for index, box in pairs(attackBoxList) do
+                love.graphics.setColor(1,0,0, 0.5)
+                love.graphics.rectangle('fill', box.x, -box.y, box.r - box.x, box.y - box.b)
+            end
+
+            love.graphics.setColor(1,1,1)
+        end
     end
 
 	love.graphics.pop()
@@ -194,10 +214,55 @@ function PlayerObject:GetImageFromTimeline(timeline, frame)
     return lastImage
 end
 
+function PlayerObject:GetAttackBoxFromTimeline(timeline, frame)
+    local boxList = {}
+    for index, box in pairs(timeline.attackBoxes) do
+        if frame >= box.start and frame < box.last then
+            table.insert(boxList, box)
+        end
+    end
+    return boxList
+end
+
+function PlayerObject:GetDamageBoxFromTimeline(timeline, frame)
+    local boxList = {}
+    for index, box in pairs(timeline.damageBoxes) do
+        if frame >= box.start and frame < box.last then
+            table.insert(boxList, box)
+        end
+    end
+    return boxList
+end
+
+
+-- Check to see if 2 boxes are colliding
+function CheckIfBoxesCollide(box1, box2)
+    return not (box1.x > box2.r or box2.x > box1.r or box1.y < box2.b or box2.y < box1.b)
+end
+
+function TranslateBox(box, x, y) 
+    return { x = box.x + x, y = box.y + y, r = box.r + x, b = box.b + y}
+end
 function PlayerObject:IsAttacking()
     if self.currentState and self.currentState.attack and self.attackCanHit then
         return true
     end
+end
+
+-- Check if colliding with one of the enemy's attack boxes.
+function PlayerObject:CheckIfHit(enemy)
+    local attackBoxList = self:GetAttackBoxFromTimeline(enemy.currentTimeline, enemy.currentFrame)
+    local damageBoxList = self:GetDamageBoxFromTimeline(self.currentTimeline, self.currentFrame)
+
+    for index, box1 in pairs(attackBoxList) do
+        -- Check against all damage boxes
+        for index2, box2 in pairs(damageBoxList) do
+            if CheckIfBoxesCollide(TranslateBox(box1, enemy.physics.x, enemy.physics.y), TranslateBox(box2, self.physics.x, self.physics.y)) then
+                return true
+            end
+        end
+    end
+    return false
 end
 
 
