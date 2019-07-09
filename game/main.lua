@@ -24,7 +24,9 @@ local InputSystem =
 	remotePlayerState = {},			-- Store the input state for the remote player.
 
 	playerCommandBuffer = {{}, {}},	-- A ring buffer. Stores the on/off state for each basic input command.
-	inputBufferIndex = 1			-- The current index used to update and read player input commands.
+	inputBufferIndex = 1,			-- The current index used to update and read player input commands.
+
+	joysticks = {},					-- Available joysticks 
 }
 
 -- The update method syncs the keyboard and joystick input with the internal player input state. It also handles syncing the remote player's inputs.
@@ -35,8 +37,47 @@ function InputSystem:Update()
 
 	-- Update the remote player's command buffer.
 	self.playerCommandBuffer[self.remotePlayerIndex][self.inputBufferIndex] = table.copy(self.remotePlayerState)
-end
 
+	
+	-- Get buttons from first joysticks
+	for index, joystick in pairs(self.joysticks) do
+		if self.joysticks[1] then
+
+			local commandBuffer = self.playerCommandBuffer[index][self.inputBufferIndex]
+			local axisX = joystick:getAxis(1)
+			local axisY = joystick:getAxis(2)
+			
+			-- Reset the direction state for this frame.
+			commandBuffer.left = false
+			commandBuffer.right = false
+			commandBuffer.up = false
+			commandBuffer.down = false
+			commandBuffer.attack = false
+
+			-- Indicates the neutral zone of the joystick
+			local axisGap = 0.5
+
+			if axisX > axisGap then
+				commandBuffer.right = true
+			elseif axisX < -axisGap then 
+				commandBuffer.left = true
+			end
+
+			if axisY > axisGap then
+				commandBuffer.down = true
+			elseif axisY < -axisGap then 
+				commandBuffer.up = true
+			end	
+
+			self.playerCommandBuffer[self.localPlayerIndex][self.inputBufferIndex].attack = false
+
+			if joystick:isDown(1) then
+				commandBuffer.attack = true
+			end
+
+		end
+	end
+end	
 
 
 -- Array of our player objects.
@@ -55,6 +96,11 @@ function love.load()
 	-- -- This is the coordinates where the player character will be rendered.
 	-- player.x = 1
 	-- player.y = 1
+
+	InputSystem.joysticks = love.joystick.getJoysticks()
+	for index, stick in pairs(InputSystem.joysticks) do
+		print("Found Gamepad: " .. stick:getName())
+	end
  
 
 	-- Load all images needed for the player character animations
@@ -85,6 +131,7 @@ function love.load()
 
 
 end
+
 
 -- Set the internal keyboard state input to true on pressed.
 function love.keypressed(key, scancode, isrepeat)
@@ -218,6 +265,8 @@ function love.draw()
 
 	love.graphics.print("Hitstun: (".. PlayerObjectList[1].hitstunTimer .. ", " .. PlayerObjectList[2].hitstunTimer .. ")", 10, 20)
 	love.graphics.print("Hitstop: (".. PlayerObjectList[1].hitstopTimer .. ", " .. PlayerObjectList[2].hitstopTimer .. ")", 10, 30)
+
+	
 	-- Stage ground color
 	love.graphics.setColor(1,1,1)
 
