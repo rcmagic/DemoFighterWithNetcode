@@ -53,6 +53,13 @@ Timelines =
         {
             {start = 8, last = 11, x = 32, y = 80, r = 120, b = -20}
         },
+
+        attackProperties =
+        {
+            damage = 1300,
+            hitStun = 15,
+            hitStop = 8,
+        }
     
     }
 }

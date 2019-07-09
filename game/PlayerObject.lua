@@ -267,8 +267,18 @@ function PlayerObject:CheckIfHit(enemy)
     return false
 end
 
-function PlayerObject:ApplyDamage(damageInfo)
-    self.hp = self.hp - damageInfo.damage
+-- Get the current attack properties if they exist.
+function PlayerObject:GetAttackProperties()
+    if self.currentTimeline then
+        return self.currentTimeline.attackProperties
+    end
+end
+
+-- Apply all the hit properties to the defending player
+function PlayerObject:ApplyHitProperties(attackProperties)
+    self.events.hitstop = attackProperties.hitStop
+    self.events.hitstun = attackProperties.hitStun
+    self.hp = self.hp - attackProperties.damage
     if self.hp < 0 then
         self.hp = 0
     end

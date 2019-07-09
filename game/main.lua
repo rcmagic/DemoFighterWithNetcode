@@ -146,25 +146,27 @@ function love.update(dt)
 	PlayerObjectList[1]:PreUpdate()
 	PlayerObjectList[2]:PreUpdate()
 
-	-- Hitstop is constant among all attacks for now
-	local hitstop = 10
-
 	for playerIndex1, attacker in pairs(PlayerObjectList) do
 		-- Handle collisions.
 		if not attacker.attackHit and attacker:IsAttacking() then
 			for playerIndex2, defender in pairs(PlayerObjectList) do
 				if playerIndex1 ~= playerIndex2 and defender:CheckIfHit(attacker) then
-					defender.events.AttackedThisFrame = true
 
-					-- These events are only valid until the end of the frame.
-					defender.events.hitstun = 20
-					defender.events.hitstop = hitstop
+				
+					local attackProperties = attacker:GetAttackProperties()
 
-					attacker.events.HitEnemyThisFrame = true
-					attacker.events.hitstop = hitstop
-					attacker.attackHit = true
+					-- When there are no attack properties, the collision will be ignored.
+					if attackProperties then
+							
+						-- These events are only valid until the end of the frame.
+						defender.events.AttackedThisFrame = true
+						attacker.events.HitEnemyThisFrame = true
+						attacker.events.hitstop = attackProperties.hitStop
+						attacker.attackHit = true
 
-					defender:ApplyDamage({damage = 1200})
+						-- Apply the hit properties. I'll probably make an event and delay until the Update() call later.
+						defender:ApplyHitProperties(attackProperties)
+					end
 				end
 			end
 		end
