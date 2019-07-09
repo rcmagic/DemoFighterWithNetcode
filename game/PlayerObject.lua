@@ -286,9 +286,10 @@ function MakePlayerObject()
             attackCanHit = false,                               -- Whether or not the attack is currently able to hit
             attackHit = false,                                  -- Whether or not the current attack already hit.
 
+            hpMax = 10000,                                      -- Maximum amount of life the player can have
+            hp = hpMax,                                         -- Current amount of life the player has.
+
             events = {},                                        -- Events that get cleared at the start of every frame.
-
-
         }  
     )
 end

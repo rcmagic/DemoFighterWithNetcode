@@ -79,6 +79,11 @@ function love.load()
 	PlayerObjectList[2].physics.x = 200
 	PlayerObjectList[2].physics.y = 0
 
+
+	-- Temporary setting different hp amounts to test life bar drawing.
+	PlayerObjectList[1].hp = 5000
+	PlayerObjectList[2].hp = 8000
+
 	-- Entry functions for the players starting a match
 	PlayerObjectList[1]:Begin()
 	PlayerObjectList[2]:Begin()
@@ -174,12 +179,7 @@ end
 
 
 function love.draw()
-	love.graphics.print("Current FPS: "..tostring(love.timer.getFPS( )), 10, 10)
 
-	love.graphics.print("Hitstun: (".. PlayerObjectList[1].hitstunTimer .. ", " .. PlayerObjectList[2].hitstunTimer .. ")", 10, 20)
-	love.graphics.print("Hitstop: (".. PlayerObjectList[1].hitstopTimer .. ", " .. PlayerObjectList[2].hitstopTimer .. ")", 10, 30)
-	-- Stage ground color
-	love.graphics.setColor(1,1,1)
 
 	-- Draw the ground.
 	love.graphics.rectangle('fill', 0, 768 - GROUND_HEIGHT, 1024, GROUND_HEIGHT)
@@ -210,4 +210,52 @@ function love.draw()
 
 	love.graphics.pop()
 
+	DrawHUD()
+
+
+	-- Draw debug information ontop of everything else.
+	love.graphics.setColor(1,1,1)
+	love.graphics.print("Current FPS: "..tostring(love.timer.getFPS( )), 10, 10)
+
+	love.graphics.print("Hitstun: (".. PlayerObjectList[1].hitstunTimer .. ", " .. PlayerObjectList[2].hitstunTimer .. ")", 10, 20)
+	love.graphics.print("Hitstop: (".. PlayerObjectList[1].hitstopTimer .. ", " .. PlayerObjectList[2].hitstopTimer .. ")", 10, 30)
+	-- Stage ground color
+	love.graphics.setColor(1,1,1)
+
+end
+
+local lifeBarXOffset = 56		-- Position from the side of the screen of the life bars.
+local lifeBarYOffset = 40		-- Position from the top of the screen of the life bars.
+
+local lifeBarWidth = 386		-- Lifebar width.
+local lifeBarHeight = 22		-- Lifebar height.
+
+local lifeBarColor = {0, 193 / 255, 0}		-- Color indicating the current amount of HP.
+local lifeBarBGColor = {0.3, 0.3, 0.3}	-- Color behind the lifebar when HP is depleated. 
+
+
+function DrawLifeBar(hpRate)
+	love.graphics.setColor(lifeBarBGColor)
+	love.graphics.rectangle('fill', 0, 0, lifeBarWidth, lifeBarHeight)
+
+	love.graphics.setColor(lifeBarColor)
+	love.graphics.rectangle('fill', 0, 0, lifeBarWidth*hpRate, lifeBarHeight)
+end
+-- Draw lifebars and other information that will be displayed to the player.
+function DrawHUD()
+	
+	-- Draw player 1's life bar.
+	love.graphics.push()
+	love.graphics.translate(lifeBarXOffset, lifeBarYOffset)
+	DrawLifeBar(PlayerObjectList[1].hp / PlayerObjectList[1].hpMax)
+	love.graphics.pop()
+
+
+	-- Draw player 2's life bar.
+	love.graphics.push()
+	love.graphics.translate(SCREEN_WIDTH-lifeBarXOffset, lifeBarYOffset)
+	love.graphics.scale(-1, 1)
+	DrawLifeBar(PlayerObjectList[2].hp / PlayerObjectList[2].hpMax)
+	love.graphics.pop()
+	
 end
