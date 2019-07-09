@@ -79,11 +79,6 @@ function love.load()
 	PlayerObjectList[2].physics.x = 200
 	PlayerObjectList[2].physics.y = 0
 
-
-	-- Temporary setting different hp amounts to test life bar drawing.
-	PlayerObjectList[1].hp = 5000
-	PlayerObjectList[2].hp = 8000
-
 	-- Entry functions for the players starting a match
 	PlayerObjectList[1]:Begin()
 	PlayerObjectList[2]:Begin()
@@ -168,6 +163,8 @@ function love.update(dt)
 					attacker.events.HitEnemyThisFrame = true
 					attacker.events.hitstop = hitstop
 					attacker.attackHit = true
+
+					defender:ApplyDamage({damage = 1200})
 				end
 			end
 		end

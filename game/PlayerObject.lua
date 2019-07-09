@@ -267,6 +267,13 @@ function PlayerObject:CheckIfHit(enemy)
     return false
 end
 
+function PlayerObject:ApplyDamage(damageInfo)
+    self.hp = self.hp - damageInfo.damage
+    if self.hp < 0 then
+        self.hp = 0
+    end
+end
+
 
 -- Player Object Factory
 function MakePlayerObject()
@@ -286,8 +293,8 @@ function MakePlayerObject()
             attackCanHit = false,                               -- Whether or not the attack is currently able to hit
             attackHit = false,                                  -- Whether or not the current attack already hit.
 
-            hpMax = 10000,                                      -- Maximum amount of life the player can have
-            hp = hpMax,                                         -- Current amount of life the player has.
+            hpMax = DEFAULT_HP,                                 -- Maximum amount of life the player can have
+            hp = DEFAULT_HP,                                    -- Current amount of life the player has.
 
             events = {},                                        -- Events that get cleared at the start of every frame.
         }  
