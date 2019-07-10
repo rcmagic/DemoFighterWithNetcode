@@ -24,26 +24,54 @@ local InputSystem =
 	remotePlayerState = {},			-- Store the input state for the remote player.
 
 	playerCommandBuffer = {{}, {}},	-- A ring buffer. Stores the on/off state for each basic input command.
-	inputBufferIndex = 1,			-- The current index used to update and read player input commands.
+	inputBufferIndex = 0,			-- The current index used to update and read player input commands. Starting at 0
+
+	inputDelay = 0,					-- Specify how many frames the player's inputs will be delayed by. Used in networking. Increase this value to test delay!
 
 	joysticks = {},					-- Available joysticks 
 }
 
+-- Get the entire input state for the current from a player's input command buffer.
+function InputSystem:GetInputState(bufferIndex)
+	return self.playerCommandBuffer[bufferIndex][self.inputBufferIndex]
+end
+
+-- Initialize the player input command ring buffer.
+function InputSystem:InitializeBuffer(bufferIndex)
+	for i=1,InputSystem.MAX_INPUT_FRAMES do
+		self.playerCommandBuffer[bufferIndex][i] = { up = false, down = false, left = false, right = false, attack = false}
+	end
+end
+
 -- The update method syncs the keyboard and joystick input with the internal player input state. It also handles syncing the remote player's inputs.
 function InputSystem:Update()
 
+	-- Update the input ring buffer index.
+	self.inputBufferIndex = self.inputBufferIndex + 1
+	if self.inputBufferIndex > InputSystem.MAX_INPUT_FRAMES then
+		self.inputBufferIndex = 1 
+	end
+
+	-- Setup the index used to handle input delay
+	local delayedIndex = self.inputBufferIndex + self.inputDelay
+	-- Wrap around the index to the from of the buffer.
+	if delayedIndex > InputSystem.MAX_INPUT_FRAMES then
+		delayedIndex = delayedIndex - InputSystem.MAX_INPUT_FRAMES + 1
+	end
+
 	-- Update the local player's command buffer for the current frame.
-	self.playerCommandBuffer[self.localPlayerIndex][self.inputBufferIndex] = table.copy(self.keyboardState)
+	self.playerCommandBuffer[self.localPlayerIndex][delayedIndex] = table.copy(self.keyboardState)
 
 	-- Update the remote player's command buffer.
-	self.playerCommandBuffer[self.remotePlayerIndex][self.inputBufferIndex] = table.copy(self.remotePlayerState)
+	self.playerCommandBuffer[self.remotePlayerIndex][delayedIndex] = table.copy(self.remotePlayerState)
 
-	
 	-- Get buttons from first joysticks
 	for index, joystick in pairs(self.joysticks) do
 		if self.joysticks[1] then
 
-			local commandBuffer = self.playerCommandBuffer[index][self.inputBufferIndex]
+
+
+			local commandBuffer = self.playerCommandBuffer[index][delayedIndex]
 			local axisX = joystick:getAxis(1)
 			local axisY = joystick:getAxis(2)
 			
@@ -69,14 +97,13 @@ function InputSystem:Update()
 				commandBuffer.up = true
 			end	
 
-			self.playerCommandBuffer[self.localPlayerIndex][self.inputBufferIndex].attack = false
-
 			if joystick:isDown(1) then
 				commandBuffer.attack = true
 			end
 
 		end
 	end
+
 end	
 
 
@@ -109,11 +136,17 @@ function love.load()
 
 	love.keyboard.setKeyRepeat( false)
 
+	-- Initialize player input command buffers
+	InputSystem:InitializeBuffer(1)
+	InputSystem:InitializeBuffer(2)
+
 	-- Initialize refence to command buffers for each player
 	PlayerObjectList[1].inputCommands = InputSystem.playerCommandBuffer[1]
+	PlayerObjectList[1].input = InputSystem
 	PlayerObjectList[1].playerIndex = 1
 
 	PlayerObjectList[2].inputCommands = InputSystem.playerCommandBuffer[2]
+	PlayerObjectList[2].input = InputSystem
 	PlayerObjectList[2].playerIndex = 2
 
 	PlayerObjectList[2].facing = true

@@ -284,6 +284,11 @@ function PlayerObject:ApplyHitProperties(attackProperties)
     end
 end
 
+-- Get State State
+function PlayerObject:GetInputState()
+    return self.input:GetInputState(self.playerIndex)
+end
+
 
 -- Player Object Factory
 function MakePlayerObject()

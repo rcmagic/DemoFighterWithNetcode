@@ -14,13 +14,13 @@ end
 
 function CharacterStates.Standing:Update(player)
 
-    if player.inputCommands[1].attack then
+    if player:GetInputState().attack then
         return CharacterStates.Attack
-    elseif player.inputCommands[1].up then
+    elseif player:GetInputState().up then
         return CharacterStates.Jump
-    elseif player.inputCommands[1].right then 
+    elseif player:GetInputState().right then 
         player.physics.xVel = 3
-    elseif player.inputCommands[1].left then
+    elseif player:GetInputState().left then
         player.physics.xVel = -3
     else
         player.physics.xVel = 0
@@ -53,7 +53,7 @@ function CharacterStates.Jump:Update(player)
         player.physics.yVel = 0
         player.physics.yAcc = 0
         return CharacterStates.Standing
-    elseif player.inputCommands[1].attack then
+    elseif player:GetInputState().attack then
         return CharacterStates.Attack
     end
 end
