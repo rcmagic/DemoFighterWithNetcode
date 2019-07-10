@@ -14,7 +14,7 @@ end
 
 function CharacterStates.Standing:Update(player)
 
-    if player:GetInputState().attack then
+    if player:GetInputState().attack_pressed then
         return CharacterStates.Attack
     elseif player:GetInputState().up then
         return CharacterStates.Jump

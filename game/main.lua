@@ -43,6 +43,25 @@ function InputSystem:InitializeBuffer(bufferIndex)
 	end
 end
 
+-- Record inputs the player pressed this frame.
+function InputSystem:UpdateInputChanges()
+	local previousIndex = self.inputBufferIndex - 1
+	if previousIndex < 1 then
+		previousIndex = InputSystem.MAX_INPUT_FRAMES
+	end
+
+	for i=1,2 do
+		local state = self.playerCommandBuffer[i][self.inputBufferIndex]
+		local previousState = self.playerCommandBuffer[i][previousIndex]
+
+		state.up_pressed = state.up and not previousState.up
+		state.down_pressed = state.down and not previousState.down
+		state.left_pressed = state.left and not previousState.left
+		state.right_pressed = state.right and not previousState.right
+		state.attack_pressed = state.attack and not previousState.attack
+	end
+end
+
 -- The update method syncs the keyboard and joystick input with the internal player input state. It also handles syncing the remote player's inputs.
 function InputSystem:Update()
 
@@ -104,6 +123,8 @@ function InputSystem:Update()
 		end
 	end
 
+	-- Update input changes
+	InputSystem:UpdateInputChanges()
 end	
 
 
