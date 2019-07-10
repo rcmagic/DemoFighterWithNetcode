@@ -54,7 +54,7 @@ function InputSystem:Update()
 
 	-- Setup the index used to handle input delay
 	local delayedIndex = self.inputBufferIndex + self.inputDelay
-	-- Wrap around the index to the from of the buffer.
+	-- Wrap around the index to the front of the buffer.
 	if delayedIndex > InputSystem.MAX_INPUT_FRAMES then
 		delayedIndex = delayedIndex - InputSystem.MAX_INPUT_FRAMES + 1
 	end
