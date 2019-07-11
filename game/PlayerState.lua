@@ -38,7 +38,7 @@ PlayerState = {}
 -- Base table for player states.
 PlayerState = Object:New()
 
--- Called when the transitioning into this state.
+-- Called when transitioning into this state.
 function PlayerState:Begin(player)
 end
 
@@ -46,7 +46,7 @@ end
 function PlayerState:Update(player)
 end
 
--- Called when the transitioning out of this state.
+-- Called when transitioning out of this state.
 function PlayerState:End(player)
 end
 

@@ -116,8 +116,8 @@ end
 
 
 function PlayerObject:Begin()
-	currentState = CharacterStates.Standing:New()
-	currentState:Begin(self)
+	self.currentState = CharacterStates.Standing:New()
+	self.currentState:Begin(self)
 end
 
 -- Handle any changes that must happen before Update() is called.

@@ -1,7 +1,7 @@
 
 require("PlayerObject")		-- Player object handling.
 require("RunOverride")		-- Includes an overrided love.run function for handling fixed time step.
-
+require("MatchSystem")
 
 	
 -- Enabled when the game is paused
@@ -183,6 +183,9 @@ function love.load()
 	PlayerObjectList[1]:Begin()
 	PlayerObjectList[2]:Begin()
 
+	-- Initialize the match system
+	MatchSystem.players = PlayerObjectList
+	MatchSystem:Begin()
 
 end
 
@@ -275,6 +278,8 @@ function love.update(dt)
 	-- Update the player objects.
 	PlayerObjectList[1]:Update()
 	PlayerObjectList[2]:Update()
+
+	MatchSystem:Update()
 end
 
 
@@ -311,6 +316,8 @@ function love.draw()
 	love.graphics.pop()
 
 	DrawHUD()
+
+	MatchSystem:Draw()
 
 
 	-- Draw debug information ontop of everything else.

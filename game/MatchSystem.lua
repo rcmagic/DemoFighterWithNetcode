@@ -40,7 +40,7 @@ function MatchState:New(o)
 end
 
 
--- Called when the transitioning into this state.
+-- Called when transitioning into this state.
 function MatchState:Begin(match)
 end
 
@@ -48,7 +48,7 @@ end
 function MatchState:Update(match)
 end
 
--- Called when the transitioning out of this state.
+-- Called when transitioning out of this state.
 function MatchState:End(match)
 end
 
