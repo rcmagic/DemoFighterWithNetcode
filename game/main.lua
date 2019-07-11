@@ -112,6 +112,7 @@ function DrawHUD()
 	
 end
 
+-- Top level drawing function
 function Game:Draw()
 	-- Draw the ground.
 	love.graphics.rectangle('fill', 0, 768 - GROUND_HEIGHT, 1024, GROUND_HEIGHT)
@@ -147,13 +148,13 @@ function Game:Draw()
 	MatchSystem:Draw()
 
 	-- Draw debug information ontop of everything else.
-	love.graphics.setColor(1,1,1)
-	love.graphics.print("Current FPS: "..tostring(love.timer.getFPS( )), 10, 10)
+	-- love.graphics.setColor(1,1,1)
+	-- love.graphics.print("Current FPS: "..tostring(love.timer.getFPS( )), 10, 10)
 
-	love.graphics.print("Hitstun: (".. Game.players[1].hitstunTimer .. ", " .. Game.players[2].hitstunTimer .. ")", 10, 20)
-	love.graphics.print("Hitstop: (".. Game.players[1].hitstopTimer .. ", " .. Game.players[2].hitstopTimer .. ")", 10, 30)
+	-- love.graphics.print("Hitstun: (".. Game.players[1].hitstunTimer .. ", " .. Game.players[2].hitstunTimer .. ")", 10, 20)
+	-- love.graphics.print("Hitstop: (".. Game.players[1].hitstopTimer .. ", " .. Game.players[2].hitstopTimer .. ")", 10, 30)
 
-	love.graphics.print("Position: (".. Game.players[1].physics.x .. ", " .. Game.players[2].physics.x .. ")", 10, 40)
+	-- love.graphics.print("Position: (".. Game.players[1].physics.x .. ", " .. Game.players[2].physics.x .. ")", 10, 40)
 
 	
 	-- Stage ground color
