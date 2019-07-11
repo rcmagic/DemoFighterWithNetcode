@@ -1,4 +1,4 @@
-
+require("World")
 require("PlayerObject")		-- Player object handling.
 require("RunOverride")		-- Includes an overrided love.run function for handling fixed time step.
 require("MatchSystem")
@@ -184,6 +184,7 @@ function love.load()
 	PlayerObjectList[2]:Begin()
 
 	-- Initialize the match system
+	MatchSystem.world = World
 	MatchSystem.players = PlayerObjectList
 	MatchSystem:Begin()
 
@@ -245,39 +246,42 @@ function love.update(dt)
 	-- Update the input system
 	InputSystem:Update()
 
-	
-	-- Run the preupdate
-	PlayerObjectList[1]:PreUpdate()
-	PlayerObjectList[2]:PreUpdate()
+	-- When the world state is paused, don't update any of the players
+	if not World.stop then
+		-- Run the preupdate
+		PlayerObjectList[1]:PreUpdate()
+		PlayerObjectList[2]:PreUpdate()
 
-	for playerIndex1, attacker in pairs(PlayerObjectList) do
-		-- Handle collisions.
-		if not attacker.attackHit and attacker:IsAttacking() then
-			for playerIndex2, defender in pairs(PlayerObjectList) do
-				if playerIndex1 ~= playerIndex2 and defender:CheckIfHit(attacker) then
+		for playerIndex1, attacker in pairs(PlayerObjectList) do
+			-- Handle collisions.
+			if not attacker.attackHit and attacker:IsAttacking() then
+				for playerIndex2, defender in pairs(PlayerObjectList) do
+					if playerIndex1 ~= playerIndex2 and defender:CheckIfHit(attacker) then
 
-				
-					local attackProperties = attacker:GetAttackProperties()
+					
+						local attackProperties = attacker:GetAttackProperties()
 
-					-- When there are no attack properties, the collision will be ignored.
-					if attackProperties then
-							
-						-- These events are only valid until the end of the frame.
-						defender.events.AttackedThisFrame = true
-						attacker.events.HitEnemyThisFrame = true
-						attacker.events.hitstop = attackProperties.hitStop
-						attacker.attackHit = true
+						-- When there are no attack properties, the collision will be ignored.
+						if attackProperties then
+								
+							-- These events are only valid until the end of the frame.
+							defender.events.AttackedThisFrame = true
+							attacker.events.HitEnemyThisFrame = true
+							attacker.events.hitstop = attackProperties.hitStop
+							attacker.attackHit = true
 
-						-- Apply the hit properties. I'll probably make an event and delay until the Update() call later.
-						defender:ApplyHitProperties(attackProperties)
+							-- Apply the hit properties. I'll probably make an event and delay until the Update() call later.
+							defender:ApplyHitProperties(attackProperties)
+						end
 					end
 				end
 			end
 		end
+
+		-- Update the player objects.
+		PlayerObjectList[1]:Update()
+		PlayerObjectList[2]:Update()
 	end
-	-- Update the player objects.
-	PlayerObjectList[1]:Update()
-	PlayerObjectList[2]:Update()
 
 	MatchSystem:Update()
 end

@@ -110,6 +110,9 @@ end
 Match.End = MatchState:New()
 
 function Match.End:Begin(match)
+    -- Disable world updates
+    match.world.stop = true
+    
     -- Disable player input at the end of a match
     match.players[1].inputEnabled = false
     match.players[2].inputEnabled = false
@@ -119,6 +122,11 @@ function Match.End:Update(match)
     if match.timer > 60 * 2 then
         return Match.EndWait
     end
+end
+
+function Match.End:End(match)
+    -- Enable world updates
+    match.world.stop = false
 end
 
 function Match.End:Draw(match)
