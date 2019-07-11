@@ -35,11 +35,11 @@ Match = {}
 Match.Start = MatchState:New()
 
 function Match.Start:Begin(match)
-    -- Entry functions for the players starting a match
+	-- Entry functions for the players starting a match
 	match.players[1]:Begin()
-    match.players[2]:Begin()
-    
-    match.players[2].facing = true
+	match.players[2]:Begin()
+	
+	match.players[2].facing = true
 
 	-- Initial Player Positions.
 	match.players[1].physics.x = -200
@@ -128,7 +128,7 @@ end
 Match.EndWait = MatchState:New()
 
 function Match.EndWait:Update(match)
-    if match.timer > 60 * 2 then
-        match:Reset()
-    end
+	if match.timer > 60 * 2 then
+		match:Reset()
+	end
 end

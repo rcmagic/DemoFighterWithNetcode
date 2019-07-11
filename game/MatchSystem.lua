@@ -1,9 +1,9 @@
 require("MatchStates")
 MatchSystem = 
 {
-	currentState = MatchState:New(),      	-- Current match state.
-	timer = 0,                             	-- Total time the current state has been running (in frames)
-	players = {},							-- player list
+	currentState = MatchState:New(),	-- Current match state.
+	timer = 0,							-- Total time the current state has been running (in frames)
+	players = {},						-- player list
 }
 
 function MatchSystem:Reset()
