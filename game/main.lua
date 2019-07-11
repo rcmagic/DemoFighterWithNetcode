@@ -19,6 +19,25 @@ function Game:Reset()
 	MatchSystem:Reset()
 end
 
+-- Stores the state of all rollbackable objects and system in the game.
+function Game:StoreState()
+	self.storedState = {}
+
+	-- All rollbackable objects and systms will have a CopyState() method.
+	self.storedState.players = {self.players[1]:CopyState(), self.players[2]:CopyState()}
+end
+
+-- Restores the state of all rollbackable objects and system in the game.
+function Game:RestoreState()
+	-- Can't restore the state if has not been saved yet.
+	if not self.storedState then 
+		return
+	end
+
+	self.players[1]:SetState(self.storedState.players[1])
+	self.players[2]:SetState(self.storedState.players[2])
+end
+
 
 -- Top level update for the game state.
 function Game:Update()
@@ -217,6 +236,12 @@ function love.keypressed(key, scancode, isrepeat)
 		paused = not paused
 	elseif key == 'f2' then
 		frameStep = true
+
+	-- Test controls for storing/restoring state.
+	elseif key == 'f7' then
+		Game:StoreState()
+	elseif key == 'f8' then
+		Game:RestoreState()
 	end
 end
 

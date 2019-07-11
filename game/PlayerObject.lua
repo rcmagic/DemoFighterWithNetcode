@@ -40,6 +40,31 @@ function PhysicsSystem:Update(player)
 	end
 end
 
+-- Used in the rollback system to make a copy of the state of the physics system.
+function PhysicsSystem:CopyState()
+    local state = {}
+    state.x = self.x		
+    state.y = self.y	
+    state.xVel = self.xVel	
+    state.yVel = self.yVel	
+    state.xAcc = self.xAcc	
+    state.yAcc = self.yAcc	
+    state.facing = self.facing
+
+    return state
+end
+
+-- Used in the rollback system to restore the old state of the physics system.
+function PhysicsSystem:SetState(state)
+    self.x = state.x		
+    self.y = state.y	
+    self.xVel = state.xVel	
+    self.yVel = state.yVel	
+    self.xAcc = state.xAcc	
+    self.yAcc = state.yAcc	
+    self.facing = state.facing
+end
+
 -- Physics system factor
 function MakePhysicsSystem()
     -- Have to create a unique table or it will copy the base one.
@@ -296,20 +321,49 @@ end
 
 
 function PlayerObject:Reset()
-    self.states = CharacterStates                      
     self.currentState = CharacterStates.Standing:New() 
     self.physics = MakePhysicsSystem() -- May add a reset function to the physics system later.           
-    self.timelines = Timelines                         
     self.currentTimeline = nil                         
     self.currentFrame = 0                              
     self.hitstunTimer = 0                              
     self.hitstopTimer = 0                              
     self.attackCanHit = false                          
     self.attackHit = false                             
-    self.hpMax = DEFAULT_HP                            
     self.hp = DEFAULT_HP                               
-    self.events = {}                                   
     self.inputEnabled = false                          
+end
+
+-- Used in the rollback system to make a copy of the state of the player.
+function PlayerObject:CopyState()
+    local state = {}
+    state.physics = self.physics:CopyState()   -- The physics system must be rolled back at well.
+
+    state.currentState =  self.currentState
+    state.currentTimeline = self.currentTimeline                       
+    state.currentFrame =  self.currentFrame                             
+    state.hitstunTimer =  self.hitstunTimer                             
+    state.hitstopTimer =  self.hitstopTimer                             
+    state.attackCanHit =  self.attackCanHit                         
+    state.attackHit =     self.attackHit                             
+    state.hp =            self.hp                              
+    state.inputEnabled =  self.inputEnabled                         
+
+    return state
+end
+
+-- Used in the rollback system to restore the old state of the player.
+function PlayerObject:SetState(state)
+    self.physics:SetState(state.physics)    -- The physics system must be rolled back at well.
+
+    self.currentState =  state.currentState
+    self.currentTimeline = state.currentTimeline
+    self.currentFrame =  state.currentFrame     
+    self.hitstunTimer =  state.hitstunTimer     
+    self.hitstopTimer =  state.hitstopTimer     
+    self.attackCanHit =  state.attackCanHit     
+    self.attackHit =     state.attackHit        
+    self.hp =            state.hp               
+    self.inputEnabled =  state.inputEnabled     
 end
 
 -- Player Object Factory
