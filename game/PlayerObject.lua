@@ -284,9 +284,14 @@ function PlayerObject:ApplyHitProperties(attackProperties)
     end
 end
 
+-- Used this table when inputs for the player are disabled.
+local emptyInputState = {}
 -- Get State State
 function PlayerObject:GetInputState()
-    return self.input:GetInputState(self.playerIndex)
+    if self.inputEnabled then
+        return self.input:GetInputState(self.playerIndex)
+    end
+    return emptyInputState
 end
 
 
@@ -312,6 +317,8 @@ function MakePlayerObject()
             hp = DEFAULT_HP,                                    -- Current amount of life the player has.
 
             events = {},                                        -- Events that get cleared at the start of every frame.
+
+            inputEnabled = false,                               -- Indicates whether or not the character responds to player inputs.
         }  
     )
 end
