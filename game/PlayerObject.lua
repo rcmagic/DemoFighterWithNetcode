@@ -295,6 +295,23 @@ function PlayerObject:GetInputState()
 end
 
 
+function PlayerObject:Reset()
+    self.states = CharacterStates                      
+    self.currentState = CharacterStates.Standing:New() 
+    self.physics = MakePhysicsSystem() -- May add a reset function to the physics system later.           
+    self.timelines = Timelines                         
+    self.currentTimeline = nil                         
+    self.currentFrame = 0                              
+    self.hitstunTimer = 0                              
+    self.hitstopTimer = 0                              
+    self.attackCanHit = false                          
+    self.attackHit = false                             
+    self.hpMax = DEFAULT_HP                            
+    self.hp = DEFAULT_HP                               
+    self.events = {}                                   
+    self.inputEnabled = false                          
+end
+
 -- Player Object Factory
 function MakePlayerObject()
     return PlayerObject:New(

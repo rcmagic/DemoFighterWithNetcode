@@ -1,3 +1,4 @@
+require("InputSystem")
 require("World")
 require("PlayerObject")		-- Player object handling.
 require("RunOverride")		-- Includes an overrided love.run function for handling fixed time step.
@@ -10,150 +11,167 @@ local paused = false
 -- Enabled when game needs to update for a single frame.
 local frameStep = false 
 
+-- Manages the game state
+local Game = {}
 
--- The input system is an abstraction layer between system input and commands used to control player objects.
-local InputSystem = 
-{
-	MAX_INPUT_FRAMES = 60,			-- The maximum number of input commands stored in the player controller ring buff.
-
-	localPlayerIndex 	= 1,		-- The player index for the player on the local client.
-	remotePlayerIndex 	= 2,		-- The player index for the player on the remote client.
-
-	keyboardState = {}, 			-- System keyboard state. This is updated in love callbacks love.keypressed and love.keyreleased.
-
-	remotePlayerState = {},			-- Store the input state for the remote player.
-
-	playerCommandBuffer = {{}, {}},	-- A ring buffer. Stores the on/off state for each basic input command.
-	inputBufferIndex = 0,			-- The current index used to update and read player input commands. Starting at 0
-
-	inputDelay = 0,					-- Specify how many frames the player's inputs will be delayed by. Used in networking. Increase this value to test delay!
-
-	joysticks = {},					-- Available joysticks 
-}
-
--- Get the entire input state for the current from a player's input command buffer.
-function InputSystem:GetInputState(bufferIndex)
-	return self.playerCommandBuffer[bufferIndex][self.inputBufferIndex]
+-- Resets the game.
+function Game:Reset()
+	MatchSystem:Reset()
 end
 
--- Initialize the player input command ring buffer.
-function InputSystem:InitializeBuffer(bufferIndex)
-	for i=1,InputSystem.MAX_INPUT_FRAMES do
-		self.playerCommandBuffer[bufferIndex][i] = { up = false, down = false, left = false, right = false, attack = false}
-	end
-end
 
--- Record inputs the player pressed this frame.
-function InputSystem:UpdateInputChanges()
-	local previousIndex = self.inputBufferIndex - 1
-	if previousIndex < 1 then
-		previousIndex = InputSystem.MAX_INPUT_FRAMES
-	end
-
-	for i=1,2 do
-		local state = self.playerCommandBuffer[i][self.inputBufferIndex]
-		local previousState = self.playerCommandBuffer[i][previousIndex]
-
-		state.up_pressed = state.up and not previousState.up
-		state.down_pressed = state.down and not previousState.down
-		state.left_pressed = state.left and not previousState.left
-		state.right_pressed = state.right and not previousState.right
-		state.attack_pressed = state.attack and not previousState.attack
-	end
-end
-
--- The update method syncs the keyboard and joystick input with the internal player input state. It also handles syncing the remote player's inputs.
-function InputSystem:Update()
-
-	-- Update the input ring buffer index.
-	self.inputBufferIndex = self.inputBufferIndex + 1
-	if self.inputBufferIndex > InputSystem.MAX_INPUT_FRAMES then
-		self.inputBufferIndex = 1 
-	end
-
-	-- Setup the index used to handle input delay
-	local delayedIndex = self.inputBufferIndex + self.inputDelay
-	-- Wrap around the index to the front of the buffer.
-	if delayedIndex > InputSystem.MAX_INPUT_FRAMES then
-		delayedIndex = delayedIndex - InputSystem.MAX_INPUT_FRAMES + 1
-	end
-
-	-- Update the local player's command buffer for the current frame.
-	self.playerCommandBuffer[self.localPlayerIndex][delayedIndex] = table.copy(self.keyboardState)
-
-	-- Update the remote player's command buffer.
-	self.playerCommandBuffer[self.remotePlayerIndex][delayedIndex] = table.copy(self.remotePlayerState)
-
-	-- Get buttons from first joysticks
-	for index, joystick in pairs(self.joysticks) do
-		if self.joysticks[1] then
-
-
-
-			local commandBuffer = self.playerCommandBuffer[index][delayedIndex]
-			local axisX = joystick:getAxis(1)
-			local axisY = joystick:getAxis(2)
-			
-			-- Reset the direction state for this frame.
-			commandBuffer.left = false
-			commandBuffer.right = false
-			commandBuffer.up = false
-			commandBuffer.down = false
-			commandBuffer.attack = false
-
-			-- Indicates the neutral zone of the joystick
-			local axisGap = 0.5
-
-			if axisX > axisGap then
-				commandBuffer.right = true
-			elseif axisX < -axisGap then 
-				commandBuffer.left = true
-			end
-
-			if axisY > axisGap then
-				commandBuffer.down = true
-			elseif axisY < -axisGap then 
-				commandBuffer.up = true
-			end	
-
-			if joystick:isDown(1) then
-				commandBuffer.attack = true
-			end
-
+-- Top level update for the game state.
+function Game:Update()
+	
+	if paused then
+		if frameStep then
+			frameStep = false
+		else
+			-- Do not update the game when paused.
+			return
 		end
 	end
 
-	-- Update input changes
-	InputSystem:UpdateInputChanges()
-end	
+	-- Update the input system
+	InputSystem:Update()
+
+	-- When the world state is paused, don't update any of the players
+	if not World.stop then
+		-- Run the preupdate
+		Game.players[1]:PreUpdate()
+		Game.players[2]:PreUpdate()
+
+		for playerIndex1, attacker in pairs(Game.players) do
+			-- Handle collisions.
+			if not attacker.attackHit and attacker:IsAttacking() then
+				for playerIndex2, defender in pairs(Game.players) do
+					if playerIndex1 ~= playerIndex2 and defender:CheckIfHit(attacker) then
+
+					
+						local attackProperties = attacker:GetAttackProperties()
+
+						-- When there are no attack properties, the collision will be ignored.
+						if attackProperties then
+								
+							-- These events are only valid until the end of the frame.
+							defender.events.AttackedThisFrame = true
+							attacker.events.HitEnemyThisFrame = true
+							attacker.events.hitstop = attackProperties.hitStop
+							attacker.attackHit = true
+
+							-- Apply the hit properties. I'll probably make an event and delay until the Update() call later.
+							defender:ApplyHitProperties(attackProperties)
+						end
+					end
+				end
+			end
+		end
+
+		-- Update the player objects.
+		Game.players[1]:Update()
+		Game.players[2]:Update()
+	end
+
+	MatchSystem:Update()
+end
 
 
--- Array of our player objects.
-local PlayerObjectList = { MakePlayerObject(), MakePlayerObject() }
+local lifeBarXOffset = 56		-- Position from the side of the screen of the life bars.
+local lifeBarYOffset = 40		-- Position from the top of the screen of the life bars.
 
-local data = {}
-function love.load()
-    --     -- This is the height and the width of the platform.
-	-- platform.width = love.graphics.getWidth()    -- This makes the platform as wide as the whole game window.
-	-- platform.height = love.graphics.getHeight()  -- This makes the platform as tall as the whole game window.
- 
-    --     -- This is the coordinates where the platform will be rendered.
-	-- platform.x = 0                               -- This starts drawing the platform at the left edge of the game window.
-	-- platform.y = platform.height / 2             -- This starts drawing the platform at the very middle of the game window
+local lifeBarWidth = 386		-- Lifebar width.
+local lifeBarHeight = 22		-- Lifebar height.
+
+local lifeBarColor = {0, 193 / 255, 0}		-- Color indicating the current amount of HP.
+local lifeBarBGColor = {0.3, 0.3, 0.3}	-- Color behind the lifebar when HP is depleated. 
+
+function DrawLifeBar(hpRate)
+	love.graphics.setColor(lifeBarBGColor)
+	love.graphics.rectangle('fill', 0, 0, lifeBarWidth, lifeBarHeight)
+
+	love.graphics.setColor(lifeBarColor)
+	love.graphics.rectangle('fill', 0, 0, lifeBarWidth*hpRate, lifeBarHeight)
+end
+
+-- Draw lifebars and other information that will be displayed to the player.
+function DrawHUD()
 	
-	-- -- This is the coordinates where the player character will be rendered.
-	-- player.x = 1
-	-- player.y = 1
+	-- Draw player 1's life bar.
+	love.graphics.push()
+	love.graphics.translate(lifeBarXOffset, lifeBarYOffset)
+	DrawLifeBar(Game.players[1].hp / Game.players[1].hpMax)
+	love.graphics.pop()
+
+
+	-- Draw player 2's life bar.
+	love.graphics.push()
+	love.graphics.translate(SCREEN_WIDTH-lifeBarXOffset, lifeBarYOffset)
+	love.graphics.scale(-1, 1)
+	DrawLifeBar(Game.players[2].hp / Game.players[2].hpMax)
+	love.graphics.pop()
+	
+end
+
+function Game:Draw()
+	-- Draw the ground.
+	love.graphics.rectangle('fill', 0, 768 - GROUND_HEIGHT, 1024, GROUND_HEIGHT)
+
+	love.graphics.push()
+	
+	-- Move draw everything in world coordinates
+	love.graphics.translate(1024 / 2, 768 - GROUND_HEIGHT)
+
+	-- Create drawing priority list.
+	local drawList = {Game.players[1], Game.players[2]}
+	
+	-- Comparison function
+	local comparePlayers = function(a, b)
+		if a.currentState.attack then
+			return false
+		end
+		return true
+	end
+
+	-- Sort based on priority
+	table.sort(drawList, comparePlayers)
+
+	-- Draw players from the sorted list
+	for index, player in pairs(drawList) do
+		player:Draw()
+	end
+
+	love.graphics.pop()
+
+	DrawHUD()
+
+	MatchSystem:Draw()
+
+	-- Draw debug information ontop of everything else.
+	love.graphics.setColor(1,1,1)
+	love.graphics.print("Current FPS: "..tostring(love.timer.getFPS( )), 10, 10)
+
+	love.graphics.print("Hitstun: (".. Game.players[1].hitstunTimer .. ", " .. Game.players[2].hitstunTimer .. ")", 10, 20)
+	love.graphics.print("Hitstop: (".. Game.players[1].hitstopTimer .. ", " .. Game.players[2].hitstopTimer .. ")", 10, 30)
+
+	love.graphics.print("Position: (".. Game.players[1].physics.x .. ", " .. Game.players[2].physics.x .. ")", 10, 40)
+
+	
+	-- Stage ground color
+	love.graphics.setColor(1,1,1)
+end
+
+function love.load()
 
 	InputSystem.joysticks = love.joystick.getJoysticks()
 	for index, stick in pairs(InputSystem.joysticks) do
 		print("Found Gamepad: " .. stick:getName())
 	end
- 
 
+	Game.players = { MakePlayerObject(), MakePlayerObject() }
+ 
 	-- Load all images needed for the player character animations
-	PlayerObjectList[1].imageSequences = LoadPlayerImageSequences(1)
-	PlayerObjectList[2].imageSequences = LoadPlayerImageSequences(2)
+	Game.players[1].imageSequences = LoadPlayerImageSequences(1)
+	Game.players[2].imageSequences = LoadPlayerImageSequences(2)
 
 	love.keyboard.setKeyRepeat( false)
 
@@ -162,34 +180,20 @@ function love.load()
 	InputSystem:InitializeBuffer(2)
 
 	-- Initialize refence to command buffers for each player
-	PlayerObjectList[1].inputCommands = InputSystem.playerCommandBuffer[1]
-	PlayerObjectList[1].input = InputSystem
-	PlayerObjectList[1].playerIndex = 1
+	Game.players[1].input = InputSystem
+	Game.players[1].playerIndex = 1
 
-	PlayerObjectList[2].inputCommands = InputSystem.playerCommandBuffer[2]
-	PlayerObjectList[2].input = InputSystem
-	PlayerObjectList[2].playerIndex = 2
+	Game.players[2].input = InputSystem
+	Game.players[2].playerIndex = 2
 
-	PlayerObjectList[2].facing = true
-
-	-- Initial Player Positions.
-	PlayerObjectList[1].physics.x = -200
-	PlayerObjectList[1].physics.y = 0
-
-	PlayerObjectList[2].physics.x = 200
-	PlayerObjectList[2].physics.y = 0
-
-	-- Entry functions for the players starting a match
-	PlayerObjectList[1]:Begin()
-	PlayerObjectList[2]:Begin()
 
 	-- Initialize the match system
 	MatchSystem.world = World
-	MatchSystem.players = PlayerObjectList
-	MatchSystem:Begin()
+	MatchSystem.players = Game.players
+	MatchSystem.game = Game
 
+	Game:Reset()
 end
-
 
 -- Set the internal keyboard state input to true on pressed.
 function love.keypressed(key, scancode, isrepeat)
@@ -233,142 +237,9 @@ function love.keyreleased(key, scancode, isrepeat)
 end
 
 function love.update(dt)
-
-	if paused then
-		if frameStep then
-			frameStep = false
-		else
-			-- Do not update the game when paused.
-			return
-		end
-	end
-
-	-- Update the input system
-	InputSystem:Update()
-
-	-- When the world state is paused, don't update any of the players
-	if not World.stop then
-		-- Run the preupdate
-		PlayerObjectList[1]:PreUpdate()
-		PlayerObjectList[2]:PreUpdate()
-
-		for playerIndex1, attacker in pairs(PlayerObjectList) do
-			-- Handle collisions.
-			if not attacker.attackHit and attacker:IsAttacking() then
-				for playerIndex2, defender in pairs(PlayerObjectList) do
-					if playerIndex1 ~= playerIndex2 and defender:CheckIfHit(attacker) then
-
-					
-						local attackProperties = attacker:GetAttackProperties()
-
-						-- When there are no attack properties, the collision will be ignored.
-						if attackProperties then
-								
-							-- These events are only valid until the end of the frame.
-							defender.events.AttackedThisFrame = true
-							attacker.events.HitEnemyThisFrame = true
-							attacker.events.hitstop = attackProperties.hitStop
-							attacker.attackHit = true
-
-							-- Apply the hit properties. I'll probably make an event and delay until the Update() call later.
-							defender:ApplyHitProperties(attackProperties)
-						end
-					end
-				end
-			end
-		end
-
-		-- Update the player objects.
-		PlayerObjectList[1]:Update()
-		PlayerObjectList[2]:Update()
-	end
-
-	MatchSystem:Update()
+	Game:Update()
 end
-
 
 function love.draw()
-
-
-	-- Draw the ground.
-	love.graphics.rectangle('fill', 0, 768 - GROUND_HEIGHT, 1024, GROUND_HEIGHT)
-
-	love.graphics.push()
-	
-	-- Move draw everything in world coordinates
-	love.graphics.translate(1024 / 2, 768 - GROUND_HEIGHT)
-
-	-- Create drawing priority list.
-	local drawList = {PlayerObjectList[1], PlayerObjectList[2]}
-	
-	-- Comparison function
-	local comparePlayers = function(a, b)
-		if a.currentState.attack then
-			return false
-		end
-		return true
-	end
-
-	-- Sort based on priority
-	table.sort(drawList, comparePlayers)
-
-	-- Draw players from the sorted list
-	for index, player in pairs(drawList) do
-		player:Draw()
-	end
-
-	love.graphics.pop()
-
-	DrawHUD()
-
-	MatchSystem:Draw()
-
-
-	-- Draw debug information ontop of everything else.
-	love.graphics.setColor(1,1,1)
-	love.graphics.print("Current FPS: "..tostring(love.timer.getFPS( )), 10, 10)
-
-	love.graphics.print("Hitstun: (".. PlayerObjectList[1].hitstunTimer .. ", " .. PlayerObjectList[2].hitstunTimer .. ")", 10, 20)
-	love.graphics.print("Hitstop: (".. PlayerObjectList[1].hitstopTimer .. ", " .. PlayerObjectList[2].hitstopTimer .. ")", 10, 30)
-
-	
-	-- Stage ground color
-	love.graphics.setColor(1,1,1)
-
-end
-
-local lifeBarXOffset = 56		-- Position from the side of the screen of the life bars.
-local lifeBarYOffset = 40		-- Position from the top of the screen of the life bars.
-
-local lifeBarWidth = 386		-- Lifebar width.
-local lifeBarHeight = 22		-- Lifebar height.
-
-local lifeBarColor = {0, 193 / 255, 0}		-- Color indicating the current amount of HP.
-local lifeBarBGColor = {0.3, 0.3, 0.3}	-- Color behind the lifebar when HP is depleated. 
-
-
-function DrawLifeBar(hpRate)
-	love.graphics.setColor(lifeBarBGColor)
-	love.graphics.rectangle('fill', 0, 0, lifeBarWidth, lifeBarHeight)
-
-	love.graphics.setColor(lifeBarColor)
-	love.graphics.rectangle('fill', 0, 0, lifeBarWidth*hpRate, lifeBarHeight)
-end
--- Draw lifebars and other information that will be displayed to the player.
-function DrawHUD()
-	
-	-- Draw player 1's life bar.
-	love.graphics.push()
-	love.graphics.translate(lifeBarXOffset, lifeBarYOffset)
-	DrawLifeBar(PlayerObjectList[1].hp / PlayerObjectList[1].hpMax)
-	love.graphics.pop()
-
-
-	-- Draw player 2's life bar.
-	love.graphics.push()
-	love.graphics.translate(SCREEN_WIDTH-lifeBarXOffset, lifeBarYOffset)
-	love.graphics.scale(-1, 1)
-	DrawLifeBar(PlayerObjectList[2].hp / PlayerObjectList[2].hpMax)
-	love.graphics.pop()
-	
+	Game:Draw()
 end
