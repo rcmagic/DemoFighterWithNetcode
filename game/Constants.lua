@@ -8,3 +8,4 @@ DEFAULT_HP  = 10000                 -- Default Max HP of players.
 
 -- Global Variables
 SHOW_HITBOXES  = false              -- Debugg settings for displaying hitboxes
+SHOW_DEBUG_INFO = false             -- Prints debug information on screen when enabled.

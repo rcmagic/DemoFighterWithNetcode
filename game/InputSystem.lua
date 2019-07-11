@@ -113,3 +113,54 @@ function InputSystem:Update()
 	-- Update input changes
 	InputSystem:UpdateInputChanges()
 end	
+
+-- Set the internal keyboard state input to true on pressed.
+function love.keypressed(key, scancode, isrepeat)
+
+	if key == 'w'  then
+		InputSystem.keyboardState.up = true
+	elseif key == 's' then
+		InputSystem.keyboardState.down = true
+	elseif key == 'a'  then
+		InputSystem.keyboardState.left = true
+	elseif key == 'd' then
+		InputSystem.keyboardState.right = true
+	elseif key == 'g' then
+		InputSystem.keyboardState.attack = true
+	end
+    
+    if key == 'f5' then
+        InputSystem.game:Reset()
+	elseif key == 'f4' then
+		SHOW_HITBOXES = not SHOW_HITBOXES
+	elseif key == 'f3' then
+		paused = not paused
+	elseif key == 'f2' then
+        frameStep = true
+    elseif key == 'f1' then
+        SHOW_DEBUG_INFO = not SHOW_DEBUG_INFO
+
+	-- Test controls for storing/restoring state.
+	elseif key == 'f7' then
+		Game:StoreState()
+	elseif key == 'f8' then
+		Game:RestoreState()
+	end
+end
+
+-- Set the internal keyboard state input to false on release.
+function love.keyreleased(key, scancode, isrepeat)
+
+	if key == 'w'  then
+		InputSystem.keyboardState.up = false
+	elseif key == 's' then
+		InputSystem.keyboardState.down = false
+	elseif key == 'a'  then
+		InputSystem.keyboardState.left = false
+	elseif key == 'd' then
+		InputSystem.keyboardState.right = false
+	elseif key == 'g' then
+		InputSystem.keyboardState.attack = false
+	end
+
+end

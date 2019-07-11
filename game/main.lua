@@ -1,8 +1,8 @@
-require("InputSystem")
-require("World")
+require("InputSystem")		-- Manages player inputs.
+require("World")			-- World object
 require("PlayerObject")		-- Player object handling.
 require("RunOverride")		-- Includes an overrided love.run function for handling fixed time step.
-require("MatchSystem")
+require("MatchSystem")		-- Manages match state
 
 	
 -- Enabled when the game is paused
@@ -19,21 +19,22 @@ function Game:Reset()
 	MatchSystem:Reset()
 end
 
--- Stores the state of all rollbackable objects and system in the game.
+-- Stores the state of all rollbackable objects and systems in the game.
 function Game:StoreState()
 	self.storedState = {}
 
-	-- All rollbackable objects and systms will have a CopyState() method.
+	-- All rollbackable objects and systems will have a CopyState() method.
 	self.storedState.players = {self.players[1]:CopyState(), self.players[2]:CopyState()}
 end
 
--- Restores the state of all rollbackable objects and system in the game.
+-- Restores the state of all rollbackable objects and systems in the game.
 function Game:RestoreState()
 	-- Can't restore the state if has not been saved yet.
 	if not self.storedState then 
 		return
 	end
 
+	-- All rollbackable objects and systems will have a SetState() method.
 	self.players[1]:SetState(self.storedState.players[1])
 	self.players[2]:SetState(self.storedState.players[2])
 end
@@ -166,14 +167,14 @@ function Game:Draw()
 
 	MatchSystem:Draw()
 
-	-- Draw debug information ontop of everything else.
-	-- love.graphics.setColor(1,1,1)
-	-- love.graphics.print("Current FPS: "..tostring(love.timer.getFPS( )), 10, 10)
+	if SHOW_DEBUG_INFO then
+		--- Draw debug information ontop of everything else.
+		love.graphics.setColor(1,1,1)
+		love.graphics.print("Current FPS: "..tostring(love.timer.getFPS( )), 10, 10)
 
-	-- love.graphics.print("Hitstun: (".. Game.players[1].hitstunTimer .. ", " .. Game.players[2].hitstunTimer .. ")", 10, 20)
-	-- love.graphics.print("Hitstop: (".. Game.players[1].hitstopTimer .. ", " .. Game.players[2].hitstopTimer .. ")", 10, 30)
-
-	-- love.graphics.print("Position: (".. Game.players[1].physics.x .. ", " .. Game.players[2].physics.x .. ")", 10, 40)
+		love.graphics.print("Hitstun: (".. Game.players[1].hitstunTimer .. ", " .. Game.players[2].hitstunTimer .. ")", 10, 20)
+		love.graphics.print("Hitstop: (".. Game.players[1].hitstopTimer .. ", " .. Game.players[2].hitstopTimer .. ")", 10, 30)
+	end
 
 	
 	-- Stage ground color
@@ -195,6 +196,8 @@ function love.load()
 
 	love.keyboard.setKeyRepeat( false)
 
+	InputSystem.game = Game
+	
 	-- Initialize player input command buffers
 	InputSystem:InitializeBuffer(1)
 	InputSystem:InitializeBuffer(2)
@@ -213,53 +216,6 @@ function love.load()
 	MatchSystem.game = Game
 
 	Game:Reset()
-end
-
--- Set the internal keyboard state input to true on pressed.
-function love.keypressed(key, scancode, isrepeat)
-
-	if key == 'w'  then
-		InputSystem.keyboardState.up = true
-	elseif key == 's' then
-		InputSystem.keyboardState.down = true
-	elseif key == 'a'  then
-		InputSystem.keyboardState.left = true
-	elseif key == 'd' then
-		InputSystem.keyboardState.right = true
-	elseif key == 'g' then
-		InputSystem.keyboardState.attack = true
-	end
-	
-	if key == 'f4' then
-		SHOW_HITBOXES = not SHOW_HITBOXES
-	elseif key == 'f3' then
-		paused = not paused
-	elseif key == 'f2' then
-		frameStep = true
-
-	-- Test controls for storing/restoring state.
-	elseif key == 'f7' then
-		Game:StoreState()
-	elseif key == 'f8' then
-		Game:RestoreState()
-	end
-end
-
--- Set the internal keyboard state input to false on release.
-function love.keyreleased(key, scancode, isrepeat)
-
-	if key == 'w'  then
-		InputSystem.keyboardState.up = false
-	elseif key == 's' then
-		InputSystem.keyboardState.down = false
-	elseif key == 'a'  then
-		InputSystem.keyboardState.left = false
-	elseif key == 'd' then
-		InputSystem.keyboardState.right = false
-	elseif key == 'g' then
-		InputSystem.keyboardState.attack = false
-	end
-
 end
 
 function love.update(dt)
