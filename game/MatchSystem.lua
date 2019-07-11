@@ -6,6 +6,7 @@ MatchSystem =
 	players = {},						-- player list
 }
 
+-- Resets the match
 function MatchSystem:Reset()
 
 	self.players[1]:Reset()
@@ -15,6 +16,21 @@ function MatchSystem:Reset()
 	self:Begin()
 end
 
+-- Used in the rollback system to make a copy of the match system state
+function MatchSystem:CopyState()
+    local state = {}
+	state.currentState = self.currentState
+	state.timer = self.timer
+    return state
+end
+
+-- Used in the rollback system to restore the old state of the match system
+function MatchSystem:SetState(state)
+	self.currentState = state.currentState
+	self.timer = state.timer
+end
+
+-- Starts the match
 function MatchSystem:Begin()
 	self.currentState = Match.Start:New()
 	self.currentState:Begin(self)

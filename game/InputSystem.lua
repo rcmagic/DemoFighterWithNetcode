@@ -134,17 +134,17 @@ function love.keypressed(key, scancode, isrepeat)
 	elseif key == 'f4' then
 		SHOW_HITBOXES = not SHOW_HITBOXES
 	elseif key == 'f3' then
-		paused = not paused
+		InputSystem.game.paused = not InputSystem.game.paused
 	elseif key == 'f2' then
-		frameStep = true
+		InputSystem.game.frameStep = true
 	elseif key == 'f1' then
 		SHOW_DEBUG_INFO = not SHOW_DEBUG_INFO
 
 	-- Test controls for storing/restoring state.
 	elseif key == 'f7' then
-		Game:StoreState()
+		InputSystem.game:StoreState()
 	elseif key == 'f8' then
-		Game:RestoreState()
+		InputSystem.game:RestoreState()
 	end
 end
 

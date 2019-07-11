@@ -5,14 +5,18 @@ require("RunOverride")		-- Includes an overrided love.run function for handling 
 require("MatchSystem")		-- Manages match state
 
 	
--- Enabled when the game is paused
-local paused = false
 
--- Enabled when game needs to update for a single frame.
-local frameStep = false 
 
 -- Manages the game state
-local Game = {}
+local Game = 
+{
+	-- Enabled when the game is paused
+	paused = false,
+
+	-- Enabled when game needs to update for a single frame.
+	frameStep = false,
+
+}
 
 -- Resets the game.
 function Game:Reset()
@@ -24,6 +28,8 @@ function Game:StoreState()
 	self.storedState = {}
 
 	-- All rollbackable objects and systems will have a CopyState() method.
+	self.storedState.world = World:CopyState()
+	self.storedState.matchSystem = MatchSystem:CopyState()
 	self.storedState.players = {self.players[1]:CopyState(), self.players[2]:CopyState()}
 end
 
@@ -35,6 +41,8 @@ function Game:RestoreState()
 	end
 
 	-- All rollbackable objects and systems will have a SetState() method.
+	World:SetState(self.storedState.world)
+	MatchSystem:SetState(self.storedState.matchSystem)
 	self.players[1]:SetState(self.storedState.players[1])
 	self.players[2]:SetState(self.storedState.players[2])
 end
@@ -43,9 +51,9 @@ end
 -- Top level update for the game state.
 function Game:Update()
 	
-	if paused then
-		if frameStep then
-			frameStep = false
+	if self.paused then
+		if self.frameStep then
+			self.frameStep = false
 		else
 			-- Do not update the game when paused.
 			return
@@ -174,6 +182,10 @@ function Game:Draw()
 
 		love.graphics.print("Hitstun: (".. Game.players[1].hitstunTimer .. ", " .. Game.players[2].hitstunTimer .. ")", 10, 20)
 		love.graphics.print("Hitstop: (".. Game.players[1].hitstopTimer .. ", " .. Game.players[2].hitstopTimer .. ")", 10, 30)
+		if World.stop == true then
+			love.graphics.print("World Stop", 10, 40)
+		end
+
 	end
 
 	
