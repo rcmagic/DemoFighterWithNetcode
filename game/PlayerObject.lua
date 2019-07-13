@@ -173,30 +173,34 @@ function PlayerObject:Update()
 		self:UpdateTimeline()
 	end
 
+	-- Update the current state and then execute the relevant callbacks when transition occurs.
+	local nextState = self.currentState:Update(self)
+	if nextState then
+		self:ChangeState(nextState)
+	end
+end
+
+-- Handle the player being hit and update hitstun.
+function PlayerObject:HandleHitReaction()
 	-- Transitions into a hit reaction if hit by an attack
 	if self.events.AttackedThisFrame then
-		self.attackCanHit = false
-		self.currentState:End(self)
-		self.currentState = CharacterStates.GroundDamage:New()
-		self.currentState:Begin(self)
-		self.hitstunTimer = self.events.hitstun -- Get hitstun that was passed in during the collision from the opponent's attack
+		self.events.HitEnemyThisFrame = false
+		self:ChangeState(CharacterStates.GroundDamage:New())
+		self.hitstunTimer = self.events.hitstun 				-- Get hitstun that was passed in during the collision from the opponent's attack
 		self.hitstopTimer = self.events.hitstop
 	else
 		if self.hitstunTimer > 0 then
 			self.hitstunTimer = self.hitstunTimer - 1
 		end
 	end
+end
 
-	-- Update the current state and then execute the relevant callbacks when transition occurs.
-	local nextState = self.currentState:Update(self)
-	if nextState then
-		self.attackHit = false
-		self.attackCanHit = false
-		self.currentState:End(self)
-		self.currentState = nextState:New()
-		self.currentState:Begin(self)
-
-	end
+function PlayerObject:ChangeState(state)
+	self.attackHit = false
+	self.attackCanHit = false
+	self.currentState:End(self)
+	self.currentState = state:New()
+	self.currentState:Begin(self)
 end
 
 function PlayerObject:UpdateTimeline()

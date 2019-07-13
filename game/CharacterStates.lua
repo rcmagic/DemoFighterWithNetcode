@@ -73,13 +73,13 @@ CharacterStates.JumpForward = PlayerState:New()
 -- Ground damage reaction
 CharacterStates.GroundDamage = PlayerState:New()
 function CharacterStates.GroundDamage:Begin(player)
+	player:PlayTimeline("stand")
 	player.hitSound:play()
 end
 
 function CharacterStates.GroundDamage:Update(player)
-
 	-- When hitstun is over the player can return to controlling the character.
-	if player.hitstunTimer < 0 then
+	if player.hitstunTimer <= 0 then
 		return CharacterStates.Standing
 	end
 end

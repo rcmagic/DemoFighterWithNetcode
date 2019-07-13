@@ -97,6 +97,10 @@ function Game:Update()
 			end
 		end
 
+		-- Transition to hit reaction and handle other damaged state.
+		Game.players[1]:HandleHitReaction()
+		Game.players[2]:HandleHitReaction()
+
 		-- Update the player objects.
 		Game.players[1]:Update()
 		Game.players[2]:Update()
