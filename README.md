@@ -11,6 +11,8 @@ An example fighting game demonstrating how to implement rollback based netcode.
 * F5: Reset Game
 * F7: Store State
 * F8: Load State
+* F9: Connect to the server
+* F11: Host a server and wait for a client.
 
 ## Install & run
 * Get [LÖVE](https://love2d.org/)

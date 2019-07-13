@@ -1,3 +1,4 @@
+require("Constants")
 
 -- Base table for match states.
 MatchState = {}
@@ -50,7 +51,12 @@ function Match.Start:Begin(match)
 end
 
 function Match.Start:Update(match)
-	if match.timer > 60 * 3 then
+	-- to test networking going straight into the match
+	if SKIP_MATCH_INTRO then
+		return Match.Run
+	end
+
+	if match.timer > 60 * 2 then
 		return Match.Go
 	end
 end
@@ -66,6 +72,7 @@ end
 Match.Go = MatchState:New()
 
 function Match.Go:Update(match)
+
 	if match.timer > 60 * 1 then
 		return Match.Run
 	end

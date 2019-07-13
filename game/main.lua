@@ -3,7 +3,7 @@ require("World")			-- World object
 require("PlayerObject")		-- Player object handling.
 require("RunOverride")		-- Includes an overrided love.run function for handling fixed time step.
 require("MatchSystem")		-- Manages match state
-
+require("Network")			-- Handles networking
 	
 
 
@@ -16,10 +16,13 @@ local Game =
 	-- Enabled when game needs to update for a single frame.
 	frameStep = false,
 
+	-- Number of ticks since the start of the game.
+	tick = 0
 }
 
 -- Resets the game.
 function Game:Reset()
+	Game.tick = 0
 	MatchSystem:Reset()
 end
 
@@ -32,6 +35,8 @@ function Game:StoreState()
 	self.storedState.inputSystem = InputSystem:CopyState()
 	self.storedState.matchSystem = MatchSystem:CopyState()
 	self.storedState.players = {self.players[1]:CopyState(), self.players[2]:CopyState()}
+
+	self.storedState.tick  = self.tick
 end
 
 -- Restores the state of all rollbackable objects and systems in the game.
@@ -47,15 +52,18 @@ function Game:RestoreState()
 	MatchSystem:SetState(self.storedState.matchSystem)
 	self.players[1]:SetState(self.storedState.players[1])
 	self.players[2]:SetState(self.storedState.players[2])
+
+	self.tick = self.storedState.tick
 end
 
 
 -- Top level update for the game state.
 function Game:Update()
-	
-	if self.paused then
-		if self.frameStep then
-			self.frameStep = false
+
+	-- Pause and frame step control
+	if Game.paused then
+		if Game.frameStep then
+			Game.frameStep = false
 		else
 			-- Do not update the game when paused.
 			return
@@ -107,6 +115,8 @@ function Game:Update()
 	end
 
 	MatchSystem:Update()
+
+	Game.tick = Game.tick + 1
 end
 
 
@@ -181,6 +191,7 @@ function Game:Draw()
 
 	MatchSystem:Draw()
 
+
 	if SHOW_DEBUG_INFO then
 		--- Draw debug information ontop of everything else.
 		love.graphics.setColor(1,1,1)
@@ -192,6 +203,12 @@ function Game:Draw()
 			love.graphics.print("World Stop", 10, 40)
 		end
 
+	end
+
+	-- Shown while the server is running but not connected to a client.
+	if Network.isServer and not Network.connectedToClient then
+		love.graphics.setColor(1,0,0)
+		love.graphics.print("Network: Waiting on client to connect", 10, 40)
 	end
 
 	
@@ -240,11 +257,39 @@ function love.load()
 	MatchSystem.players = Game.players
 	MatchSystem.game = Game
 
+	Game.network = Network
+
 	Game:Reset()
 end
 
 function love.update(dt)
-	Game:Update()
+
+	local updateGame = false
+	
+	-- The network is update first
+	if Network.enabled then
+		-- Setup the local input delay to match the network input delay. 
+		-- If this isn't done, the two game clients will be out of sync with each other as the local player's input will be applied on the current frame,
+		-- while the opponent's will be applied to a frame inputDelay frames in the input buffer.
+		InputSystem.inputDelay = Network.inputDelay
+		
+		Network:SendInputData(InputSystem:GetInputState(InputSystem.localPlayerIndex, Network.inputDelay), Game.tick)
+
+		Network:ReceiveData()
+
+		if (Network.confirmedTick + Network.inputDelay - 1) >= Game.tick then
+			if Network.inputState then
+				-- Write the input state to inputDelay frames ahead in the buffer.
+				InputSystem:SetInputState(InputSystem.remotePlayerIndex, Network.inputState, Network.inputDelay) 
+			end
+			updateGame = true
+		end
+
+	end
+
+	if updateGame then
+		Game:Update()
+	end
 end
 
 function love.draw()

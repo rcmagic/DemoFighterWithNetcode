@@ -37,8 +37,34 @@ end
 
 
 -- Get the entire input state for the current from a player's input command buffer.
-function InputSystem:GetInputState(bufferIndex)
-	return self.playerCommandBuffer[bufferIndex][self.inputBufferIndex]
+function InputSystem:GetInputState(bufferIndex, offset)
+
+	local inputFrame = self.inputBufferIndex
+	if offset then
+		inputFrame = self.inputBufferIndex + offset
+		if inputFrame > InputSystem.MAX_INPUT_FRAMES then
+			inputFrame =  InputSystem.MAX_INPUT_FRAMES - (self.inputBufferIndex + offset)
+		end
+	end
+
+	local state = self.playerCommandBuffer[bufferIndex][inputFrame]
+	if not state then
+		return {}
+	end
+	return state
+end
+
+-- Directly set the input state or the player. This is used for a online match.
+function InputSystem:SetInputState(playerIndex, state, offset)
+	local inputFrame = self.inputBufferIndex
+	if offset then
+		inputFrame = self.inputBufferIndex + offset
+		if inputFrame > InputSystem.MAX_INPUT_FRAMES then
+			inputFrame =  InputSystem.MAX_INPUT_FRAMES - (self.inputBufferIndex + offset)
+		end
+	end
+
+	self.playerCommandBuffer[playerIndex][inputFrame] = table.copy(state)
 end
 
 -- Initialize the player input command ring buffer.
@@ -87,13 +113,11 @@ function InputSystem:Update()
 	self.playerCommandBuffer[self.localPlayerIndex][delayedIndex] = table.copy(self.keyboardState)
 
 	-- Update the remote player's command buffer.
-	self.playerCommandBuffer[self.remotePlayerIndex][delayedIndex] = table.copy(self.remotePlayerState)
+	--self.playerCommandBuffer[self.remotePlayerIndex][delayedIndex] = table.copy(self.remotePlayerState)
 
 	-- Get buttons from first joysticks
 	for index, joystick in pairs(self.joysticks) do
-		if self.joysticks[1] then
-
-
+		if self.joysticks[1] and (not self.game.network.enabled or (self.localPlayerIndex == index) ) then
 
 			local commandBuffer = self.playerCommandBuffer[index][delayedIndex]
 			local axisX = joystick:getAxis(1)
@@ -163,6 +187,14 @@ function love.keypressed(key, scancode, isrepeat)
 		InputSystem.game:StoreState()
 	elseif key == 'f8' then
 		InputSystem.game:RestoreState()
+	elseif key == 'f9' then
+		InputSystem.game.network:StartConnection()
+		InputSystem.localPlayerIndex = 2	-- Right now the client is always player 2.
+		InputSystem.remotePlayerIndex = 1 	-- Right now the server is always players 1.
+	elseif key == 'f11' then
+		InputSystem.game.network:StartServer()
+		InputSystem.localPlayerIndex = 1 	-- Right now the server is always players 1.
+		InputSystem.remotePlayerIndex = 2	-- Right now the client is always player 2.
 	end
 end
 

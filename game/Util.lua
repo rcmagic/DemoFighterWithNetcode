@@ -21,3 +21,14 @@ function table.deep_copy(t)
 	end
 	return t2
 end
+
+-- Print the table
+function table.print(t)
+	if not t then
+		print("Table is nil")
+		return nil
+	end
+	for k,v in pairs(t) do
+		print(k .. " : ", v)
+	end
+end
