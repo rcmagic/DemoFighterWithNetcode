@@ -66,7 +66,7 @@ function Network:StartServer()
  
 end
 
--- Connects to the other player who is hosting as the server.
+-- Connects to the other player who is hosting as the server.d
 function Network:ConnectToServer()
 	-- This most be called to connect with the server.
 	self:SendPacket(self:MakeHandshakePacket(), 5)
@@ -78,8 +78,7 @@ function Network:SendInputData(inputState, frame)
 		return
 	end
 
-	-- The server will not begin sending data until a client is connected.
-	if self.isServer and not self.connectedToClient then
+	if not self.connectedToClient then
 		return
 	end
 
@@ -202,7 +201,7 @@ function Network:ReceiveData()
 					print("Received Handshake from client. Address: " .. self.clientIP .. ".   Port: " .. self.clientPort)
 					print("Type of IP: " .. type(self.clientIP) )
 					-- Send handshake to client.
-					self:SendPacket(self:MakeHandshakePacket(), 5)
+					self:SendPacket(self:MakeHandshakePacket(), 10)
 				else
 					-- When the client receives the handshake, then the match can begin.
 					print("Received Handshake from server.")
