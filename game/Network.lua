@@ -69,7 +69,7 @@ end
 -- Connects to the other player who is hosting as the server.
 function Network:ConnectToServer()
 	-- This most be called to connect with the server.
-	self:SendPacket(self:MakeHandshakePacket())
+	self:SendPacket(self:MakeHandshakePacket(), 5)
 end
 
 function Network:SendInputData(inputState, frame)
@@ -84,15 +84,21 @@ function Network:SendInputData(inputState, frame)
 	end
 
 
-	self:SendPacket(self:MakeInputPacket(self:EncodeInput(inputState), frame))
+	self:SendPacket(self:MakeInputPacket(self:EncodeInput(inputState), frame), 5)
 end
 
 -- Handles sending packets to the other client.
-function Network:SendPacket(packet)
-	if self.isServer then
-		self.udp:sendto(packet, self.clientIP, self.clientPort)
-	else
-		self.udp:send(packet)
+function Network:SendPacket(packet, duplicates)
+	if not duplicates then
+		duplicates = 1
+	end
+
+	for i=1,duplicates do
+		if self.isServer then
+			self.udp:sendto(packet, self.clientIP, self.clientPort)
+		else
+			self.udp:send(packet)
+		end
 	end
 end
 
@@ -194,9 +200,9 @@ function Network:ReceiveData()
 					self.clientIP = ip
 					self.clientPort = port
 					print("Received Handshake from client. Address: " .. self.clientIP .. ".   Port: " .. self.clientPort)
-
+					print("Type of IP: " .. type(self.clientIP) )
 					-- Send handshake to client.
-					self:SendPacket(self:MakeHandshakePacket())
+					self:SendPacket(self:MakeHandshakePacket(), 5)
 				else
 					-- When the client receives the handshake, then the match can begin.
 					print("Received Handshake from server.")
@@ -212,7 +218,7 @@ function Network:ReceiveData()
 				self.inputState = inputState
 			end
 
-			--print("Received Tick: " .. receivedTick .. ",  Input: " .. inputFlag)
+			print("Received Tick: " .. receivedTick .. ",  Input: " .. inputFlag)
 			--table.print(inputState)
 		end
 	elseif msg and msg ~= 'timeout' then 
