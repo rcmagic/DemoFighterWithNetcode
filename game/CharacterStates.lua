@@ -46,6 +46,8 @@ function CharacterStates.Jump:Begin(player)
 	end
 
 	player.physics.yAcc = GRAVITY
+
+	player.jumpSound:play()
 end
 
 function CharacterStates.Jump:Update(player)
@@ -70,6 +72,10 @@ CharacterStates.JumpForward = PlayerState:New()
 
 -- Ground damage reaction
 CharacterStates.GroundDamage = PlayerState:New()
+function CharacterStates.GroundDamage:Begin(player)
+	player.hitSound:play()
+end
+
 function CharacterStates.GroundDamage:Update(player)
 
 	-- When hitstun is over the player can return to controlling the character.
@@ -86,6 +92,7 @@ CharacterStates.Attack.attack = true        -- Indicates this state is an attack
 
 function CharacterStates.Attack:Begin(player)
 	player:PlayTimeline("attack")
+	player.whiffSound:play()
 end
 
 function CharacterStates.Attack:Update(player)

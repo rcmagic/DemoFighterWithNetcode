@@ -208,7 +208,14 @@ function love.load()
 	Game.players[1].imageSequences = LoadPlayerImageSequences(1)
 	Game.players[2].imageSequences = LoadPlayerImageSequences(2)
 
-	love.keyboard.setKeyRepeat( false)
+	-- Load sounds
+	for index, player in pairs(Game.players) do
+		player.jumpSound = love.audio.newSource("assets/sounds/jump.wav", "static")
+		player.hitSound = love.audio.newSource("assets/sounds/hit.wav", "static")
+		player.whiffSound = love.audio.newSource("assets/sounds/whiff.wav", "static")
+	end
+
+	love.keyboard.setKeyRepeat(false)
 
 	InputSystem.game = Game
 	
