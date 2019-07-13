@@ -1,3 +1,5 @@
+require("Util")
+
 -- The input system is an abstraction layer between system input and commands used to control player objects.
 InputSystem = 
 {
@@ -17,6 +19,22 @@ InputSystem =
 
 	joysticks = {},					-- Available joysticks 
 }
+
+
+-- Used in the rollback system to make a copy of the input system state
+function InputSystem:CopyState()
+	local state = {}
+	state.playerCommandBuffer = table.deep_copy(self.playerCommandBuffer)
+	state.inputBufferIndex = self.inputBufferIndex
+	return state
+end
+
+-- Used in the rollback system to restore the old state of the input system
+function InputSystem:SetState(state)
+	self.playerCommandBuffer = state.playerCommandBuffer
+	self.inputBufferIndex = state.inputBufferIndex
+end
+
 
 -- Get the entire input state for the current from a player's input command buffer.
 function InputSystem:GetInputState(bufferIndex)

@@ -29,6 +29,7 @@ function Game:StoreState()
 
 	-- All rollbackable objects and systems will have a CopyState() method.
 	self.storedState.world = World:CopyState()
+	self.storedState.inputSystem = InputSystem:CopyState()
 	self.storedState.matchSystem = MatchSystem:CopyState()
 	self.storedState.players = {self.players[1]:CopyState(), self.players[2]:CopyState()}
 end
@@ -42,6 +43,7 @@ function Game:RestoreState()
 
 	-- All rollbackable objects and systems will have a SetState() method.
 	World:SetState(self.storedState.world)
+	InputSystem:SetState(self.storedState.inputSystem)
 	MatchSystem:SetState(self.storedState.matchSystem)
 	self.players[1]:SetState(self.storedState.players[1])
 	self.players[2]:SetState(self.storedState.players[2])
