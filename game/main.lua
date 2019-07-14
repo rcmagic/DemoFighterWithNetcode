@@ -115,8 +115,6 @@ function Game:Update()
 	end
 
 	MatchSystem:Update()
-
-	Game.tick = Game.tick + 1
 end
 
 
@@ -262,32 +260,51 @@ function love.load()
 	Game:Reset()
 end
 
+-- Used for testing performance. 
+local lastTime = love.timer.getTime()
+
 function love.update(dt)
 
 	local updateGame = false
 	
 	-- The network is update first
 	if Network.enabled then
+		local x = love.timer.getTime()
+
 		-- Setup the local input delay to match the network input delay. 
 		-- If this isn't done, the two game clients will be out of sync with each other as the local player's input will be applied on the current frame,
 		-- while the opponent's will be applied to a frame inputDelay frames in the input buffer.
 		InputSystem.inputDelay = Network.inputDelay
 		
-		Network:SendInputData(InputSystem:GetInputState(InputSystem.localPlayerIndex, Network.inputDelay), Game.tick)
-
+		-- First get any data that has been sent from the other client
 		Network:ReceiveData()
 
-		if (Network.confirmedTick + Network.inputDelay - 1) >= Game.tick then
+		if Network.connectedToClient then
+			-- Send this player's input state.
+			Network:SendInputData(InputSystem:GetInputState(InputSystem.localPlayerIndex, Network.inputDelay), Game.tick)
+
+			-- See if we have any input from the other player.
 			if Network.inputState then
 				-- Write the input state to inputDelay frames ahead in the buffer.
 				InputSystem:SetInputState(InputSystem.remotePlayerIndex, Network.inputState, Network.inputDelay) 
 			end
-			updateGame = true
+
+			-- Can't update the game when we don't have inputs. 
+			-- This can happen when the other player is behind, so we'll wait to update in order to let the other player catch up.
+			-- Once rollbacks are implemented, this time syncing behavior will become critical to maintain a smooth experience for bother players.
+			if (Network.confirmedTick + Network.inputDelay - 1) >= Game.tick then
+				updateGame = true
+			else
+				print("Waiting for input at tick " .. Game.tick)
+				updateGame = false
+			end
 		end
 
 	end
 
-	if updateGame then
+	if updateGame then	
+		-- Increment the tick count only when the game actually updates.
+		Game.tick = Game.tick + 1
 		Game:Update()
 	end
 end

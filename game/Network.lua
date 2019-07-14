@@ -89,7 +89,7 @@ function Network:SendInputData(inputState, frame)
 		return
 	end
 
-	self:SendPacket(self:MakeInputPacket(self:EncodeInput(inputState), frame), 2)
+	self:SendPacket(self:MakeInputPacket(self:EncodeInput(inputState), frame), 5)
 end
 
 -- Handles sending packets to the other client. Set duplicates to something > 0 to send more than once.
@@ -125,47 +125,48 @@ function Network:ReceiveData()
 		return
 	end
 
-	self.inputState = nil
+	-- For now we'll process all packets every frame.
+	repeat 
+		local data,msg,ip,port = self:ReceivePacket()
+		
+		if data then
+			local code = love.data.unpack("B", data, 1)
 
-	local data,msg,ip,port = self:ReceivePacket()
+			-- Handshake code must be received by both game instances before a match can begin.
+			if code == MsgCode.Handshake then
+				if not self.connectedToClient then
+					self.connectedToClient = true
 
-	if data then
-		local code = love.data.unpack("B", data, 1)
-
-		-- Handshake code must be received by both game instances before a match can begin.
-		if code == MsgCode.Handshake then
-			if not self.connectedToClient then
-				self.connectedToClient = true
-
-				-- The server needs to remember the address and port in order to send data to the other cilent.
-				if true then
-					-- Server needs to the other the client address and ip to know where to send data.
-					if self.isServer then
-						self.clientIP = ip
-						self.clientPort = port
+					-- The server needs to remember the address and port in order to send data to the other cilent.
+					if true then
+						-- Server needs to the other the client address and ip to know where to send data.
+						if self.isServer then
+							self.clientIP = ip
+							self.clientPort = port
+						end
+						print("Received Handshake. Address: " .. self.clientIP .. ".   Port: " .. self.clientPort)
+						-- Send handshake to client.
+						self:SendPacket(self:MakeHandshakePacket(), 5)
 					end
-					print("Received Handshake. Address: " .. self.clientIP .. ".   Port: " .. self.clientPort)
-					-- Send handshake to client.
-					self:SendPacket(self:MakeHandshakePacket(), 5)
 				end
-			end
 
-		elseif code == MsgCode.PlayerInput then
-			local receivedTick, inputFlag = love.data.unpack("jB", data, 2)
-			local inputState = self:DecodeInput(inputFlag)
-			
-			if receivedTick > self.confirmedTick then
-				self.confirmedTick = receivedTick
-				self.inputState = inputState
-			end
+			elseif code == MsgCode.PlayerInput then
+				-- Break apart the packet into its parts. We don't need the message code since we already know it.
+				local receivedTick, inputFlag = love.data.unpack("jB", data, 2) -- Final parameter is the start position
+				
+				if receivedTick > self.confirmedTick then
+					self.confirmedTick = receivedTick
+					self.inputState = self:DecodeInput(inputFlag)
+				end
 
-			-- print("Received Tick: " .. receivedTick .. ",  Input: " .. inputFlag)
-			--table.print(inputState)
+				-- print("Received Tick: " .. receivedTick .. ",  Input: " .. inputFlag)
+				--table.print(inputState)
+			end
+		elseif msg and msg ~= 'timeout' then 
+			error("Network error: "..tostring(msg))
 		end
-	elseif msg and msg ~= 'timeout' then 
-		error("Network error: "..tostring(msg))
-	end
-
+	-- When we no longer have data we're done processing packets for this frame.
+	until data == nil
 end
 
 -- Generate a packet containing information about player input.
