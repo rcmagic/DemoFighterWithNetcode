@@ -14,5 +14,9 @@ SKIP_MATCH_INTRO = true				-- Set to skip the match intro. Must be the same valu
 
 -- Network Settings
 SERVER_IP = "localhost"				-- The network address of the other player to connect to.
+
 SERVER_PORT = 12345					-- The network port the server is running on.
 NET_INPUT_DELAY	= 3					-- Amount of input delay to use by default during online matches. Should always be > 0
+
+NET_INPUT_HISTORY_SIZE = 60			-- The size of the input history buffer. Must be atleast 1.
+NET_SEND_HISTORY_SIZE = 3			-- The number of inputs we send from the input history buffer. Must be atleast 1.

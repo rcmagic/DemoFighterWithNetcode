@@ -208,7 +208,6 @@ function Game:Draw()
 		love.graphics.setColor(1,0,0)
 		love.graphics.print("Network: Waiting on client to connect", 10, 40)
 	end
-
 	
 	-- Stage ground color
 	love.graphics.setColor(1,1,1)

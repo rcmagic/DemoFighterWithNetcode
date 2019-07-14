@@ -5,5 +5,5 @@ function love.conf(t)
 
 	t.modules.physics = false		-- disable the physics module
 
-	--t.console = true				-- print to the console
+	t.console = true				-- print to the console
 end

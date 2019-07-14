@@ -32,7 +32,20 @@ Network =
 	confirmedTick = 0,				-- The confirmed tick indicates up to what game frame we have the inputs for.
 	inputState = nil,				-- Current input state sent over the network
 	inputDelay = NET_INPUT_DELAY,	-- This must be set to a value of 1 more higher.
+
+	inputHistory = {},				-- The input history. Stored as bit flag encoded input states.
+	inputHistoryIndex = 0,			-- Current index in history buffer.
 }
+
+-- Initialize History Buffer
+function Network:InitializeInputHistoryBuffer()
+	for i=1,NET_INPUT_HISTORY_SIZE do
+		self.inputHistory[i] = 0
+	end
+end
+
+-- Probably will move this call to some initialization function.
+Network:InitializeInputHistoryBuffer()
 
 -- Setup a network connection at connect to the server.
 function Network:StartConnection()
@@ -88,8 +101,10 @@ function Network:SendInputData(inputState, frame)
 	if not (self.enabled and self.connectedToClient) then
 		return
 	end
+	local encodedInput = self:EncodeInput(inputState)
 
-	self:SendPacket(self:MakeInputPacket(self:EncodeInput(inputState), frame), 5)
+	self.inputHistory[frame % NET_INPUT_HISTORY_SIZE] = encodedInput
+	self:SendPacket(self:MakeInputPacket(frame), 5)
 end
 
 -- Handles sending packets to the other client. Set duplicates to something > 0 to send more than once.
@@ -118,6 +133,10 @@ function Network:ReceivePacket(packet)
 
 	return data, msg, ip_or_msg, port
 end
+
+-- Generates a string which is used to pack/unpack the data in a player input packet.
+-- This format string is used by the love.data.pack() and love.data.unpack() functions.
+local INPUT_FORMAT_STRING = string.format('Bj%.' .. NET_SEND_HISTORY_SIZE .. 's', 'BBBBBBBBBBBBBBBB')
 
 -- Checks the queue for any incoming packets and process them.
 function Network:ReceiveData()
@@ -151,12 +170,15 @@ function Network:ReceiveData()
 				end
 
 			elseif code == MsgCode.PlayerInput then
-				-- Break apart the packet into its parts. We don't need the message code since we already know it.
-				local receivedTick, inputFlag = love.data.unpack("jB", data, 2) -- Final parameter is the start position
+				-- Break apart the packet into its parts.
+				local results = { love.data.unpack(INPUT_FORMAT_STRING, data, 1) } -- Final parameter is the start position
 				
+				local receivedTick = results[2]
 				if receivedTick > self.confirmedTick then
 					self.confirmedTick = receivedTick
-					self.inputState = self:DecodeInput(inputFlag)
+
+					-- Currently just getting the latest input.
+					self.inputState =  self:DecodeInput(results[NET_SEND_HISTORY_SIZE+2])
 				end
 
 				-- print("Received Tick: " .. receivedTick .. ",  Input: " .. inputFlag)
@@ -169,10 +191,19 @@ function Network:ReceiveData()
 	until data == nil
 end
 
--- Generate a packet containing information about player input.
-function Network:MakeInputPacket(inputFlag, frame)
-	local data = love.data.pack("string", "BjB", MsgCode.PlayerInput, frame, inputFlag)
 
+
+-- Generate a packet containing information about player input.
+function Network:MakeInputPacket(frame)
+
+	local historyIndexStart = (NET_INPUT_HISTORY_SIZE + (frame - NET_SEND_HISTORY_SIZE)) % NET_INPUT_HISTORY_SIZE
+
+	local history = {}
+	for i=0, NET_SEND_HISTORY_SIZE-1 do
+		history[i+1] = self.inputHistory[(historyIndexStart + i) % NET_INPUT_HISTORY_SIZE + 1] -- +1 here because lua indices start at 1 and not 0.
+	end
+
+	local data = love.data.pack("string", INPUT_FORMAT_STRING, MsgCode.PlayerInput, frame, unpack(history))
 	return data
 end
 
