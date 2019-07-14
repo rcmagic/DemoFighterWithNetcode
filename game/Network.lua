@@ -72,7 +72,7 @@ function Network:StartServer()
 	self.udp:settimeout(0)
 
 	-- Bind to a specific port since the client needs to know where to send its handshake message.
-	self.udp:setsockname('*', port)
+	self.udp:setsockname('*', SERVER_PORT)
  
 end
 
