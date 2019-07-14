@@ -36,15 +36,23 @@ Network =
 
 -- Setup a network connection at connect to the server.
 function Network:StartConnection()
+	print("Starting Network")
+
 	-- the address and port of the server
 	local address, port = SERVER_IP, SERVER_PORT	
-	print("Starting Network")
+	self.clientIP = address
+	self.clientPort = port
+	
 	self.enabled = true
+	self.isServer = false
 
 	self.udp = socket.udp()
+
+	-- Since there isn't a seperate network thread we need non-blocking sockets.
 	self.udp:settimeout(0)
 
-	self.udp:setpeername(address, port)
+	-- The client can bind to any port since the server will wait on a handshake message and record it later.
+	self.udp:setsockname('*', 0)
 
 	-- Start the connection with the server
 	self:ConnectToServer()
@@ -52,17 +60,19 @@ end
 
 -- Setup a network connection as the server then wait for a client to connect.
 function Network:StartServer()
-	-- the address and port of the server
-	local address, port = "localhost", SERVER_PORT	
+
 	print("Starting Server")
+
 	self.enabled = true
 	self.isServer = true
 
 	self.udp = socket.udp()
-	if self.udp then
-		self.udp:settimeout(0)
-		self.udp:setsockname('*', port)
-	end
+
+	-- Since there isn't a seperate network thread we need non-blocking sockets.
+	self.udp:settimeout(0)
+
+	-- Bind to a specific port since the client needs to know where to send its handshake message.
+	self.udp:setsockname('*', port)
  
 end
 
@@ -74,30 +84,22 @@ end
 
 function Network:SendInputData(inputState, frame)
 
-	if not self.enabled then
+	-- Don't send input data when not connect to another player's game client.
+	if not (self.enabled and self.connectedToClient) then
 		return
 	end
 
-	if not self.connectedToClient then
-		return
-	end
-
-
-	self:SendPacket(self:MakeInputPacket(self:EncodeInput(inputState), frame), 5)
+	self:SendPacket(self:MakeInputPacket(self:EncodeInput(inputState), frame), 2)
 end
 
--- Handles sending packets to the other client.
+-- Handles sending packets to the other client. Set duplicates to something > 0 to send more than once.
 function Network:SendPacket(packet, duplicates)
 	if not duplicates then
 		duplicates = 1
 	end
 
 	for i=1,duplicates do
-		if self.isServer then
-			self.udp:sendto(packet, self.clientIP, self.clientPort)
-		else
-			self.udp:send(packet)
-		end
+		self.udp:sendto(packet, self.clientIP, self.clientPort)
 	end
 end
 
@@ -107,21 +109,67 @@ function Network:ReceivePacket(packet)
 	local msg = nil
 	local ip_or_msg = nil 
 	local port = nil
-	if self.isServer then
-		data, ip_or_msg, port = self.udp:receivefrom()
 
-		if not data then
-			msg = ip_or_msg
-		end
-	else
-		data, msg = self.udp:receive()
+	data, ip_or_msg, port = self.udp:receivefrom()
+
+	if not data then
+		msg = ip_or_msg
 	end
 
-	
 	return data, msg, ip_or_msg, port
 end
 
+-- Checks the queue for any incoming packets and process them.
+function Network:ReceiveData()
+	if not self.enabled then
+		return
+	end
 
+	self.inputState = nil
+
+	local data,msg,ip,port = self:ReceivePacket()
+
+	if data then
+		local code = love.data.unpack("B", data, 1)
+
+		-- Handshake code must be received by both game instances before a match can begin.
+		if code == MsgCode.Handshake then
+			if not self.connectedToClient then
+				self.connectedToClient = true
+
+				-- The server needs to remember the address and port in order to send data to the other cilent.
+				if true then
+					-- Server needs to the other the client address and ip to know where to send data.
+					if self.isServer then
+						self.clientIP = ip
+						self.clientPort = port
+					end
+					print("Received Handshake. Address: " .. self.clientIP .. ".   Port: " .. self.clientPort)
+					-- Send handshake to client.
+					self:SendPacket(self:MakeHandshakePacket(), 5)
+				else
+					-- When the client receives the handshake, then the match can begin.
+					print("Received Handshake from server.")
+				end
+			end
+
+		elseif code == MsgCode.PlayerInput then
+			local receivedTick, inputFlag = love.data.unpack("jB", data, 2)
+			local inputState = self:DecodeInput(inputFlag)
+			
+			if receivedTick > self.confirmedTick then
+				self.confirmedTick = receivedTick
+				self.inputState = inputState
+			end
+
+			--print("Received Tick: " .. receivedTick .. ",  Input: " .. inputFlag)
+			--table.print(inputState)
+		end
+	elseif msg and msg ~= 'timeout' then 
+		error("Network error: "..tostring(msg))
+	end
+
+end
 
 -- Generate a packet containing information about player input.
 function Network:MakeInputPacket(inputFlag, frame)
@@ -174,54 +222,4 @@ function Network:DecodeInput(data)
 	state.attack 	= bit.band( data, InputCode.Attack) > 0
 
 	return state
-end
-
--- Checks the queue for any incoming packets and process them.
-function Network:ReceiveData()
-	if not self.enabled then
-		return
-	end
-
-	self.inputState = nil
-
-	local data,msg,ip,port = self:ReceivePacket()
-
-	if data then
-		local code = love.data.unpack("B", data, 1)
-
-		-- Handshake code must be received by both game instances before a match can begin.
-		if code == MsgCode.Handshake then
-			if not self.connectedToClient then
-				self.connectedToClient = true
-
-				-- The server needs to remember the address and port in order to send data to the other cilent.
-				if self.isServer then
-					self.clientIP = ip
-					self.clientPort = port
-					print("Received Handshake from client. Address: " .. self.clientIP .. ".   Port: " .. self.clientPort)
-					print("Type of IP: " .. type(self.clientIP) )
-					-- Send handshake to client.
-					self:SendPacket(self:MakeHandshakePacket(), 10)
-				else
-					-- When the client receives the handshake, then the match can begin.
-					print("Received Handshake from server.")
-				end
-			end
-
-		elseif code == MsgCode.PlayerInput then
-			local receivedTick, inputFlag = love.data.unpack("jB", data, 2)
-			local inputState = self:DecodeInput(inputFlag)
-			
-			if receivedTick > self.confirmedTick then
-				self.confirmedTick = receivedTick
-				self.inputState = inputState
-			end
-
-			print("Received Tick: " .. receivedTick .. ",  Input: " .. inputFlag)
-			--table.print(inputState)
-		end
-	elseif msg and msg ~= 'timeout' then 
-		error("Network error: "..tostring(msg))
-	end
-
 end
