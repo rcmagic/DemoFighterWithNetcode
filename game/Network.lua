@@ -147,9 +147,6 @@ function Network:ReceiveData()
 					print("Received Handshake. Address: " .. self.clientIP .. ".   Port: " .. self.clientPort)
 					-- Send handshake to client.
 					self:SendPacket(self:MakeHandshakePacket(), 5)
-				else
-					-- When the client receives the handshake, then the match can begin.
-					print("Received Handshake from server.")
 				end
 			end
 
@@ -162,7 +159,7 @@ function Network:ReceiveData()
 				self.inputState = inputState
 			end
 
-			--print("Received Tick: " .. receivedTick .. ",  Input: " .. inputFlag)
+			-- print("Received Tick: " .. receivedTick .. ",  Input: " .. inputFlag)
 			--table.print(inputState)
 		end
 	elseif msg and msg ~= 'timeout' then 
