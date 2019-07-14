@@ -279,20 +279,17 @@ function love.update(dt)
 		Network:ReceiveData()
 
 		if Network.connectedToClient then
-			-- Send this player's input state.
-			Network:SendInputData(InputSystem:GetInputState(InputSystem.localPlayerIndex, Network.inputDelay), Game.tick)
 
-			-- See if we have any input from the other player.
-			if Network.inputState then
-				-- Write the input state to inputDelay frames ahead in the buffer.
-				InputSystem:SetInputState(InputSystem.remotePlayerIndex, Network.inputState, Network.inputDelay) 
-			end
 
 			-- Can't update the game when we don't have inputs. 
 			-- This can happen when the other player is behind, so we'll wait to update in order to let the other player catch up.
 			-- Once rollbacks are implemented, this time syncing behavior will become critical to maintain a smooth experience for bother players.
-			if (Network.confirmedTick + Network.inputDelay - 1) >= Game.tick then
+			if (Network.confirmedTick + Network.inputDelay) >= Game.tick then
 				updateGame = true
+
+				-- Set the input state for the current tick for the remote player's character.
+				InputSystem:SetInputState(InputSystem.remotePlayerIndex, Network:GetRemoteInputState(Game.tick), 1) -- Offset of 1 ensure it's used for the next game update.
+
 			else
 				print("Waiting for input at tick " .. Game.tick)
 				updateGame = false
@@ -302,9 +299,18 @@ function love.update(dt)
 	end
 
 	if updateGame then	
+	
 		-- Increment the tick count only when the game actually updates.
 		Game.tick = Game.tick + 1
 		Game:Update()
+	end
+
+	-- Since our input is update in Game:Update() we want to send the input as soon as possible. 
+	-- Previously this as happening before the Game:Update() and adding uneeded latency.  
+	if Network.enabled and Network.connectedToClient  then
+		-- Send this player's input state. We when Network.inputDelay frames ahead.
+		-- Note: This input comes from the last game update, so we subtract 1 to set the correct tick.
+		Network:SendInputData(InputSystem:GetInputState(InputSystem.localPlayerIndex, Network.inputDelay), Game.tick+Network.inputDelay-1)
 	end
 end
 

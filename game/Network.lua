@@ -29,11 +29,13 @@ Network =
 	clientIP = "",					-- Detected network address for the non-server client
 	clientPort = -1,				-- Detected port for the non-server client
 
-	confirmedTick = 0,				-- The confirmed tick indicates up to what game frame we have the inputs for.
+	confirmedTick = -1,				-- The confirmed tick indicates up to what game frame we have the inputs for.
 	inputState = nil,				-- Current input state sent over the network
 	inputDelay = NET_INPUT_DELAY,	-- This must be set to a value of 1 more higher.
 
-	inputHistory = {},				-- The input history. Stored as bit flag encoded input states.
+	inputHistory = {},				-- The input history for the local player. Stored as bit flag encoded input states.	
+	remoteInputHistory = {},		-- The input history for the local player. Stored as bit flag encoded input states.
+
 	inputHistoryIndex = 0,			-- Current index in history buffer.
 }
 
@@ -41,6 +43,7 @@ Network =
 function Network:InitializeInputHistoryBuffer()
 	for i=1,NET_INPUT_HISTORY_SIZE do
 		self.inputHistory[i] = 0
+		self.remoteInputHistory[i] = 0
 	end
 end
 
@@ -89,22 +92,31 @@ function Network:StartServer()
  
 end
 
+-- Get input from the remote player for the passed in game tick.
+function Network:GetRemoteInputState(tick)
+	return self:DecodeInput(self.remoteInputHistory[1+(tick % NET_INPUT_HISTORY_SIZE)]) -- First index is 1 not 0.
+end
+
 -- Connects to the other player who is hosting as the server.d
 function Network:ConnectToServer()
 	-- This most be called to connect with the server.
 	self:SendPacket(self:MakeHandshakePacket(), 5)
 end
 
-function Network:SendInputData(inputState, frame)
+-- Send the inputState for the local player to the remote later for the passed in game tick.
+function Network:SendInputData(inputState, tick)
 
 	-- Don't send input data when not connect to another player's game client.
 	if not (self.enabled and self.connectedToClient) then
 		return
 	end
+
 	local encodedInput = self:EncodeInput(inputState)
 
-	self.inputHistory[frame % NET_INPUT_HISTORY_SIZE] = encodedInput
-	self:SendPacket(self:MakeInputPacket(frame), 5)
+	-- TODO: Set the input history somewhere else so it only occurs once for each game tick.
+	self.inputHistory[1+(tick % NET_INPUT_HISTORY_SIZE)] = encodedInput -- 1 base indexing.
+
+	self:SendPacket(self:MakeInputPacket(tick), 5)
 end
 
 -- Handles sending packets to the other client. Set duplicates to something > 0 to send more than once.
@@ -177,12 +189,14 @@ function Network:ReceiveData()
 				if receivedTick > self.confirmedTick then
 					self.confirmedTick = receivedTick
 
-					-- Currently just getting the latest input.
-					self.inputState =  self:DecodeInput(results[NET_SEND_HISTORY_SIZE+2])
+					for offset=0, NET_SEND_HISTORY_SIZE-1 do 
+						-- Save the input history sent in the packet.
+						local historyIndex = 1 + ( (NET_INPUT_HISTORY_SIZE+receivedTick-offset) % NET_INPUT_HISTORY_SIZE) -- 1 based indexing again.
+						self.remoteInputHistory[historyIndex] = results[2+NET_SEND_HISTORY_SIZE-offset] -- 3 is the index of the first input.
+					end
 				end
 
-				-- print("Received Tick: " .. receivedTick .. ",  Input: " .. inputFlag)
-				--table.print(inputState)
+				--print("Received Tick: " .. receivedTick .. ",  Input: " .. self.remoteInputHistory[(self.confirmedTick % NET_INPUT_HISTORY_SIZE)+1])
 			end
 		elseif msg and msg ~= 'timeout' then 
 			error("Network error: "..tostring(msg))

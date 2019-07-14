@@ -41,10 +41,8 @@ function InputSystem:GetInputState(bufferIndex, offset)
 
 	local inputFrame = self.inputBufferIndex
 	if offset then
-		inputFrame = self.inputBufferIndex + offset
-		if inputFrame > InputSystem.MAX_INPUT_FRAMES then
-			inputFrame =  InputSystem.MAX_INPUT_FRAMES - (self.inputBufferIndex + offset)
-		end
+		-- The 1 appearing are because lua arrays used 1 based and not 0 based indexes.
+		inputFrame = 1 + ((InputSystem.MAX_INPUT_FRAMES+self.inputBufferIndex + offset-1) % InputSystem.MAX_INPUT_FRAMES)
 	end
 
 	local state = self.playerCommandBuffer[bufferIndex][inputFrame]
@@ -58,10 +56,8 @@ end
 function InputSystem:SetInputState(playerIndex, state, offset)
 	local inputFrame = self.inputBufferIndex
 	if offset then
-		inputFrame = self.inputBufferIndex + offset
-		if inputFrame > InputSystem.MAX_INPUT_FRAMES then
-			inputFrame =  InputSystem.MAX_INPUT_FRAMES - (self.inputBufferIndex + offset)
-		end
+		-- The 1 appearing are because lua arrays used 1 based and not 0 based indexes.
+		inputFrame = 1 + ((InputSystem.MAX_INPUT_FRAMES+self.inputBufferIndex + offset-1) % InputSystem.MAX_INPUT_FRAMES)
 	end
 
 	self.playerCommandBuffer[playerIndex][inputFrame] = table.copy(state)
