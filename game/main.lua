@@ -285,9 +285,9 @@ function love.update(dt)
 			-- Can't update the game when we don't have inputs. 
 			-- This can happen when the other player is behind, so we'll wait to update in order to let the other player catch up.
 			-- Once rollbacks are implemented, this time syncing behavior will become critical to maintain a smooth experience for bother players.
-			if (Network.confirmedTick + Network.inputDelay) >= Game.tick then
+			if (Network.confirmedTick) >= Game.tick then
 				updateGame = true
-
+				--NetLog("Updating Game. Local Tick: " .. Game.tick .. "    Confirmed Tick: " .. Network.confirmedTick)
 				-- Set the input state for the current tick for the remote player's character.
 				InputSystem:SetInputState(InputSystem.remotePlayerIndex, Network:GetRemoteInputState(Game.tick), 1) -- Offset of 1 ensure it's used for the next game update.
 
@@ -320,13 +320,14 @@ function love.update(dt)
 			-- Compare sync data. We only include sync check data for the latest confirmed frame, so may not always have it.
 			if remoteSyncData and remoteSyncData ~= localSyncData then
 				NetLog("Desync at frame: " .. Game.tick)
-				if(string.len(remoteSyncData) > 0) then
-					-- Print the x coordinates so we can see which coordinates are off.
-					local p1x, p2x = love.data.unpack("nn", localSyncData, 1)
-					NetLog("[Local]  P1.x: " .. p1x .. "     P2.x: " .. p2x )
-					local p1x, p2x = love.data.unpack("nn", remoteSyncData, 1)
-					NetLog("[Remote] P1.x: " .. p1x .. "     P2.x: " .. p2x )
-				end
+				-- Print the x coordinates so we can see which coordinates are off.
+				local p1x, p2x = love.data.unpack("nn", localSyncData, 1)
+				NetLog("[Local]  P1.x: " .. p1x .. "     P2.x: " .. p2x )
+				local p1x, p2x = love.data.unpack("nn", remoteSyncData, 1)
+				NetLog("[Remote] P1.x: " .. p1x .. "     P2.x: " .. p2x )
+
+				-- Sync the state is out of sync, the log afterward is pretty useless so exiting here. Also helps to know when a desync occurred. 
+				love.event.quit(0)
 			end
 		end
 

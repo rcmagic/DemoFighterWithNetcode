@@ -8,7 +8,7 @@ love.filesystem.write(netlogName, 'Network log start\r\n')
 
 function NetLog(data)
 	love.filesystem.append(netlogName, data  .. '\r\n')
-	--print(data)
+	-- print(data)
 end
 
 -- Network code indicating the type of message.
@@ -38,7 +38,7 @@ Network =
 	clientIP = "",					-- Detected network address for the non-server client
 	clientPort = -1,				-- Detected port for the non-server client
 
-	confirmedTick = -1,				-- The confirmed tick indicates up to what game frame we have the inputs for.
+	confirmedTick = 0,				-- The confirmed tick indicates up to what game frame we have the inputs for.
 	inputState = nil,				-- Current input state sent over the network
 	inputDelay = NET_INPUT_DELAY,	-- This must be set to a value of 1 more higher.
 
@@ -148,12 +148,13 @@ function Network:SendInputData(inputState, tick, syncData)
 
 	local encodedInput = self:EncodeInput(inputState)
 
-	--NetLog("Sending Input: " .. tick .. ",  Input: " .. encodedInput)
+	-- NetLog("Sending Input: " .. tick .. ",  Input: " .. encodedInput)
 
+	local startTick = tick - self.inputDelay
+	self.syncDataHistoryLocal[1+((NET_INPUT_HISTORY_SIZE + startTick) % NET_INPUT_HISTORY_SIZE)] = syncData
 
 	-- TODO: Set the input history somewhere else so it only occurs once for each game tick.
 	self.inputHistory[1+(tick % NET_INPUT_HISTORY_SIZE)] = encodedInput -- 1 base indexing.
-	self.syncDataHistoryLocal[1+(tick % NET_INPUT_HISTORY_SIZE)] = syncData
 	self:SendPacket(self:MakeInputPacket(tick, syncData), 1)
 end
 
@@ -226,6 +227,10 @@ function Network:ReceiveData()
 				local syncData = results[2]
 				local receivedTick = results[3]
 				if receivedTick > self.confirmedTick then
+					if receivedTick - self.confirmedTick > self.inputDelay then
+						NetLog("Received packet with a tick too far ahead. Last: " .. self.confirmedTick .. "     Current: " .. receivedTick )
+					end
+
 					self.confirmedTick = receivedTick
 
 					for offset=0, NET_SEND_HISTORY_SIZE-1 do 
@@ -234,12 +239,14 @@ function Network:ReceiveData()
 						self.remoteInputHistory[historyIndex] = results[3+NET_SEND_HISTORY_SIZE-offset] -- 3 is the index of the first input.
 					end
 
-					local index = 1 + (receivedTick % NET_INPUT_HISTORY_SIZE)
+					-- Sync data is actually for the last frame update, which is confirmTick - inputDelay.
+					local startTick = receivedTick - self.inputDelay
+					local index = 1+((NET_INPUT_HISTORY_SIZE + startTick) % NET_INPUT_HISTORY_SIZE)
 					self.syncDataHistoryRemote[ index ] = syncData 		-- Keep track of sync data used for confirmed frames.
 					self.syncDataTick[ index ] = receivedTick 		-- Record which game tick we got the sync data for.
 				end
 
-				--NetLog("Received Tick: " .. receivedTick .. ",  Input: " .. self.remoteInputHistory[(self.confirmedTick % NET_INPUT_HISTORY_SIZE)+1])
+				-- NetLog("Received Tick: " .. receivedTick .. ",  Input: " .. self.remoteInputHistory[(self.confirmedTick % NET_INPUT_HISTORY_SIZE)+1])
 			end
 		elseif msg and msg ~= 'timeout' then 
 			error("Network error: "..tostring(msg))
