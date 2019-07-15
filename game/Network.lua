@@ -124,12 +124,8 @@ end
 
 function Network:GetSyncDataRemote(tick)
 	local index = 1+(tick % NET_INPUT_HISTORY_SIZE)
-	if self.syncDataTick[index] == tick then
-		return self.syncDataHistoryRemote[index] -- First index is 1 not 0.
-	end
 
-	-- Default when we don't have sync data for this frame
-	return nil
+	return self.syncDataHistoryRemote[index] -- First index is 1 not 0.
 end
 
 -- Connects to the other player who is hosting as the server.d

@@ -315,11 +315,12 @@ function love.update(dt)
 
 		-- Handle sync checking. We only perform this check when a game update occurred. 
 		if updateGame then
-			local remoteSyncData = Network:GetSyncDataRemote(Game.tick-1)
-			local localSyncData = Network:GetSyncDataLocal(Game.tick-1)
+			local checkFrame = Game.tick - Network.inputDelay
+			local remoteSyncData = Network:GetSyncDataRemote(checkFrame)
+			local localSyncData = Network:GetSyncDataLocal(checkFrame)
 			-- Compare sync data. We only include sync check data for the latest confirmed frame, so may not always have it.
-			if remoteSyncData and remoteSyncData ~= localSyncData then
-				NetLog("Desync at frame: " .. Game.tick)
+			if Game.tick > Network.inputDelay and remoteSyncData ~= localSyncData then
+				NetLog("Desync at frame: " .. checkFrame)
 				-- Print the x coordinates so we can see which coordinates are off.
 				local p1x, p2x = love.data.unpack("nn", localSyncData, 1)
 				NetLog("[Local]  P1.x: " .. p1x .. "     P2.x: " .. p2x )
