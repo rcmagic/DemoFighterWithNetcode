@@ -38,7 +38,9 @@ Network =
 
 	inputHistoryIndex = 0,			-- Current index in history buffer.
 
-	syncDataHistory = {}			-- Keeps track of the sync data
+	syncDataHistory = {},			-- Keeps track of the sync data
+	syncDataTick = {},				-- Records game tick we recorded the sync data for
+
 }
 
 -- Initialize History Buffer
@@ -47,6 +49,7 @@ function Network:InitializeInputHistoryBuffer()
 		self.inputHistory[i] = 0
 		self.remoteInputHistory[i] = 0
 		self.syncDataHistory[i] = nil
+		self.syncDataTick[i] = -1
 	end
 end
 
@@ -102,7 +105,13 @@ end
 
 -- Get the sync data which is used to check for game state desync between the clients.
 function Network:GetSyncData(tick)
-	return self.syncDataHistory[1+(tick % NET_INPUT_HISTORY_SIZE)] -- First index is 1 not 0.
+	local index = 1+(tick % NET_INPUT_HISTORY_SIZE)
+	if self.syncDataTick[index] == tick then
+		return self.syncDataHistory[index] -- First index is 1 not 0.
+	end
+
+	-- Default when we don't have sync data for this frame
+	return nil
 end
 
 -- Connects to the other player who is hosting as the server.d
@@ -202,11 +211,11 @@ function Network:ReceiveData()
 						-- Save the input history sent in the packet.
 						local historyIndex = 1 + ( (NET_INPUT_HISTORY_SIZE+receivedTick-offset) % NET_INPUT_HISTORY_SIZE) -- 1 based indexing again.
 						self.remoteInputHistory[historyIndex] = results[3+NET_SEND_HISTORY_SIZE-offset] -- 3 is the index of the first input.
-						self.syncDataHistory[historyIndex] = nil
 					end
 
-					self.syncDataHistory[ 1 + (receivedTick % NET_INPUT_HISTORY_SIZE) ] = syncData -- Keep track of sync data used for confirmed frames.
-	
+					local index = 1 + (receivedTick % NET_INPUT_HISTORY_SIZE)
+					self.syncDataHistory[ index ] = syncData 		-- Keep track of sync data used for confirmed frames.
+					self.syncDataTick[ index ] = receivedTick 		-- Record which game tick we got the sync data for.
 				end
 
 				--print("Received Tick: " .. receivedTick .. ",  Input: " .. self.remoteInputHistory[(self.confirmedTick % NET_INPUT_HISTORY_SIZE)+1])
