@@ -287,7 +287,7 @@ function love.update(dt)
 			-- Once rollbacks are implemented, this time syncing behavior will become critical to maintain a smooth experience for bother players.
 			if (Network.confirmedTick) >= Game.tick then
 				updateGame = true
-				--NetLog("Updating Game. Local Tick: " .. Game.tick .. "    Confirmed Tick: " .. Network.confirmedTick)
+				-- NetLog("Updating Game. Local Tick: " .. Game.tick .. "    Confirmed Tick: " .. Network.confirmedTick)
 				-- Set the input state for the current tick for the remote player's character.
 				InputSystem:SetInputState(InputSystem.remotePlayerIndex, Network:GetRemoteInputState(Game.tick), 1) -- Offset of 1 ensure it's used for the next game update.
 
@@ -315,7 +315,7 @@ function love.update(dt)
 
 		-- Handle sync checking. We only perform this check when a game update occurred. 
 		if updateGame then
-			local checkFrame = Game.tick - Network.inputDelay
+			local checkFrame = Game.tick - Network.inputDelay - 1
 			local remoteSyncData = Network:GetSyncDataRemote(checkFrame)
 			local localSyncData = Network:GetSyncDataLocal(checkFrame)
 			-- Compare sync data. We only include sync check data for the latest confirmed frame, so may not always have it.
