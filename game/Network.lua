@@ -37,6 +37,8 @@ Network =
 	remoteInputHistory = {},		-- The input history for the local player. Stored as bit flag encoded input states.
 
 	inputHistoryIndex = 0,			-- Current index in history buffer.
+
+	syncDataHistory = {}			-- Keeps track of the sync data
 }
 
 -- Initialize History Buffer
@@ -44,6 +46,7 @@ function Network:InitializeInputHistoryBuffer()
 	for i=1,NET_INPUT_HISTORY_SIZE do
 		self.inputHistory[i] = 0
 		self.remoteInputHistory[i] = 0
+		self.syncDataHistory[i] = nil
 	end
 end
 
@@ -97,14 +100,19 @@ function Network:GetRemoteInputState(tick)
 	return self:DecodeInput(self.remoteInputHistory[1+(tick % NET_INPUT_HISTORY_SIZE)]) -- First index is 1 not 0.
 end
 
+-- Get the sync data which is used to check for game state desync between the clients.
+function Network:GetSyncData(tick)
+	return self.syncDataHistory[1+(tick % NET_INPUT_HISTORY_SIZE)] -- First index is 1 not 0.
+end
+
 -- Connects to the other player who is hosting as the server.d
 function Network:ConnectToServer()
 	-- This most be called to connect with the server.
 	self:SendPacket(self:MakeHandshakePacket(), 5)
 end
 
--- Send the inputState for the local player to the remote later for the passed in game tick.
-function Network:SendInputData(inputState, tick)
+-- Send the inputState for the local player to the remote player for the given game tick.
+function Network:SendInputData(inputState, tick, syncData)
 
 	-- Don't send input data when not connect to another player's game client.
 	if not (self.enabled and self.connectedToClient) then
@@ -116,7 +124,7 @@ function Network:SendInputData(inputState, tick)
 	-- TODO: Set the input history somewhere else so it only occurs once for each game tick.
 	self.inputHistory[1+(tick % NET_INPUT_HISTORY_SIZE)] = encodedInput -- 1 base indexing.
 
-	self:SendPacket(self:MakeInputPacket(tick), 5)
+	self:SendPacket(self:MakeInputPacket(tick, syncData), 5)
 end
 
 -- Handles sending packets to the other client. Set duplicates to something > 0 to send more than once.
@@ -148,7 +156,7 @@ end
 
 -- Generates a string which is used to pack/unpack the data in a player input packet.
 -- This format string is used by the love.data.pack() and love.data.unpack() functions.
-local INPUT_FORMAT_STRING = string.format('Bj%.' .. NET_SEND_HISTORY_SIZE .. 's', 'BBBBBBBBBBBBBBBB')
+local INPUT_FORMAT_STRING = string.format('Bs8j%.' .. NET_SEND_HISTORY_SIZE .. 's', 'BBBBBBBBBBBBBBBB')
 
 -- Checks the queue for any incoming packets and process them.
 function Network:ReceiveData()
@@ -185,15 +193,20 @@ function Network:ReceiveData()
 				-- Break apart the packet into its parts.
 				local results = { love.data.unpack(INPUT_FORMAT_STRING, data, 1) } -- Final parameter is the start position
 				
-				local receivedTick = results[2]
+				local syncData = results[2]
+				local receivedTick = results[3]
 				if receivedTick > self.confirmedTick then
 					self.confirmedTick = receivedTick
 
 					for offset=0, NET_SEND_HISTORY_SIZE-1 do 
 						-- Save the input history sent in the packet.
 						local historyIndex = 1 + ( (NET_INPUT_HISTORY_SIZE+receivedTick-offset) % NET_INPUT_HISTORY_SIZE) -- 1 based indexing again.
-						self.remoteInputHistory[historyIndex] = results[2+NET_SEND_HISTORY_SIZE-offset] -- 3 is the index of the first input.
+						self.remoteInputHistory[historyIndex] = results[3+NET_SEND_HISTORY_SIZE-offset] -- 3 is the index of the first input.
+						self.syncDataHistory[historyIndex] = nil
 					end
+
+					self.syncDataHistory[ 1 + (receivedTick % NET_INPUT_HISTORY_SIZE) ] = syncData -- Keep track of sync data used for confirmed frames.
+	
 				end
 
 				--print("Received Tick: " .. receivedTick .. ",  Input: " .. self.remoteInputHistory[(self.confirmedTick % NET_INPUT_HISTORY_SIZE)+1])
@@ -208,7 +221,7 @@ end
 
 
 -- Generate a packet containing information about player input.
-function Network:MakeInputPacket(frame)
+function Network:MakeInputPacket(frame, syncData)
 
 	local historyIndexStart = (NET_INPUT_HISTORY_SIZE + (frame - NET_SEND_HISTORY_SIZE)) % NET_INPUT_HISTORY_SIZE
 
@@ -217,7 +230,7 @@ function Network:MakeInputPacket(frame)
 		history[i+1] = self.inputHistory[(historyIndexStart + i) % NET_INPUT_HISTORY_SIZE + 1] -- +1 here because lua indices start at 1 and not 0.
 	end
 
-	local data = love.data.pack("string", INPUT_FORMAT_STRING, MsgCode.PlayerInput, frame, unpack(history))
+	local data = love.data.pack("string", INPUT_FORMAT_STRING, MsgCode.PlayerInput, syncData, frame, unpack(history))
 	return data
 end
 

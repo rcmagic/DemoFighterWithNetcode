@@ -197,6 +197,7 @@ function Game:Draw()
 
 		love.graphics.print("Hitstun: (".. Game.players[1].hitstunTimer .. ", " .. Game.players[2].hitstunTimer .. ")", 10, 20)
 		love.graphics.print("Hitstop: (".. Game.players[1].hitstopTimer .. ", " .. Game.players[2].hitstopTimer .. ")", 10, 30)
+		love.graphics.print("P1.x: ".. Game.players[1].physics.x .. ", P2.x" .. Game.players[2].physics.x, 10, 40)
 		if World.stop == true then
 			love.graphics.print("World Stop", 10, 40)
 		end
@@ -308,9 +309,30 @@ function love.update(dt)
 	-- Since our input is update in Game:Update() we want to send the input as soon as possible. 
 	-- Previously this as happening before the Game:Update() and adding uneeded latency.  
 	if Network.enabled and Network.connectedToClient  then
+		-- Generate the data we'll send to the other player for testing that their game state is in sync.
+		-- For now we will just compare the x coordinates of the both players.
+		local syncData = love.data.pack("string", "nn", Game.players[1].physics.x, Game.players[2].physics.x)
+
+		-- Handle sync checking. We only perform this check when a game update occurred. 
+		if updateGame then
+			local remoteSyncData = Network:GetSyncData(Game.tick-1)
+			-- Compare sync data. We only include sync check data for the latest confirmed frame, so may not always have it.
+			if remoteSyncData and remoteSyncData ~= syncData then
+				print("Desync at frame: " .. Game.tick)
+				if(string.len(remoteSyncData) > 0) then
+					-- Print the x coordinates so we can see which coordinates are off.
+					local p1x, p2x = love.data.unpack("nn", syncData, 1)
+					print("[Local]  P1.x: " .. p1x .. "     P2.x: " .. p2x )
+					local p1x, p2x = love.data.unpack("nn", remoteSyncData, 1)
+					print("[Remote] P1.x: " .. p1x .. "     P2.x: " .. p2x )
+				end
+			end
+		end
+
+
 		-- Send this player's input state. We when Network.inputDelay frames ahead.
 		-- Note: This input comes from the last game update, so we subtract 1 to set the correct tick.
-		Network:SendInputData(InputSystem:GetInputState(InputSystem.localPlayerIndex, Network.inputDelay), Game.tick+Network.inputDelay-1)
+		Network:SendInputData(InputSystem:GetInputState(InputSystem.localPlayerIndex, Network.inputDelay), Game.tick+Network.inputDelay-1, syncData)
 	end
 end
 
