@@ -2,6 +2,15 @@ require("Constants")
 require("Util")
 local socket = require("socket")
 
+local netlogName = 'netlog-'.. os.time(os.date("!*t")) ..'.txt'
+-- Create net log file
+love.filesystem.write(netlogName, 'Network log start\r\n')
+
+function NetLog(data)
+	love.filesystem.append(netlogName, data  .. '\r\n')
+	--print(data)
+end
+
 -- Network code indicating the type of message.
 local MsgCode =
 {
@@ -38,7 +47,9 @@ Network =
 
 	inputHistoryIndex = 0,			-- Current index in history buffer.
 
-	syncDataHistory = {},			-- Keeps track of the sync data
+	syncDataHistoryLocal = {},		-- Keeps track of the sync data for the local client
+	syncDataHistoryRemote = {},		-- Keeps track of the sync data for the remote client
+	
 	syncDataTick = {},				-- Records game tick we recorded the sync data for
 
 }
@@ -48,7 +59,8 @@ function Network:InitializeInputHistoryBuffer()
 	for i=1,NET_INPUT_HISTORY_SIZE do
 		self.inputHistory[i] = 0
 		self.remoteInputHistory[i] = 0
-		self.syncDataHistory[i] = nil
+		self.syncDataHistoryLocal[i] = nil
+		self.syncDataHistoryRemote[i] = nil
 		self.syncDataTick[i] = -1
 	end
 end
@@ -104,10 +116,16 @@ function Network:GetRemoteInputState(tick)
 end
 
 -- Get the sync data which is used to check for game state desync between the clients.
-function Network:GetSyncData(tick)
+function Network:GetSyncDataLocal(tick)
+	local index = 1+(tick % NET_INPUT_HISTORY_SIZE)
+	return self.syncDataHistoryLocal[index] -- First index is 1 not 0.
+
+end
+
+function Network:GetSyncDataRemote(tick)
 	local index = 1+(tick % NET_INPUT_HISTORY_SIZE)
 	if self.syncDataTick[index] == tick then
-		return self.syncDataHistory[index] -- First index is 1 not 0.
+		return self.syncDataHistoryRemote[index] -- First index is 1 not 0.
 	end
 
 	-- Default when we don't have sync data for this frame
@@ -130,10 +148,13 @@ function Network:SendInputData(inputState, tick, syncData)
 
 	local encodedInput = self:EncodeInput(inputState)
 
+	--NetLog("Sending Input: " .. tick .. ",  Input: " .. encodedInput)
+
+
 	-- TODO: Set the input history somewhere else so it only occurs once for each game tick.
 	self.inputHistory[1+(tick % NET_INPUT_HISTORY_SIZE)] = encodedInput -- 1 base indexing.
-
-	self:SendPacket(self:MakeInputPacket(tick, syncData), 5)
+	self.syncDataHistoryLocal[1+(tick % NET_INPUT_HISTORY_SIZE)] = syncData
+	self:SendPacket(self:MakeInputPacket(tick, syncData), 1)
 end
 
 -- Handles sending packets to the other client. Set duplicates to something > 0 to send more than once.
@@ -214,11 +235,11 @@ function Network:ReceiveData()
 					end
 
 					local index = 1 + (receivedTick % NET_INPUT_HISTORY_SIZE)
-					self.syncDataHistory[ index ] = syncData 		-- Keep track of sync data used for confirmed frames.
+					self.syncDataHistoryRemote[ index ] = syncData 		-- Keep track of sync data used for confirmed frames.
 					self.syncDataTick[ index ] = receivedTick 		-- Record which game tick we got the sync data for.
 				end
 
-				--print("Received Tick: " .. receivedTick .. ",  Input: " .. self.remoteInputHistory[(self.confirmedTick % NET_INPUT_HISTORY_SIZE)+1])
+				--NetLog("Received Tick: " .. receivedTick .. ",  Input: " .. self.remoteInputHistory[(self.confirmedTick % NET_INPUT_HISTORY_SIZE)+1])
 			end
 		elseif msg and msg ~= 'timeout' then 
 			error("Network error: "..tostring(msg))
@@ -232,13 +253,14 @@ end
 -- Generate a packet containing information about player input.
 function Network:MakeInputPacket(frame, syncData)
 
-	local historyIndexStart = (NET_INPUT_HISTORY_SIZE + (frame - NET_SEND_HISTORY_SIZE)) % NET_INPUT_HISTORY_SIZE
+	local historyIndexStart = (NET_INPUT_HISTORY_SIZE + (frame - NET_SEND_HISTORY_SIZE+1)) % NET_INPUT_HISTORY_SIZE
 
 	local history = {}
 	for i=0, NET_SEND_HISTORY_SIZE-1 do
 		history[i+1] = self.inputHistory[(historyIndexStart + i) % NET_INPUT_HISTORY_SIZE + 1] -- +1 here because lua indices start at 1 and not 0.
 	end
 
+	--NetLog('[Packet] tick: ' .. frame .. '      input: ' .. history[NET_SEND_HISTORY_SIZE])
 	local data = love.data.pack("string", INPUT_FORMAT_STRING, MsgCode.PlayerInput, syncData, frame, unpack(history))
 	return data
 end
