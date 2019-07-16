@@ -279,6 +279,9 @@ function love.update(dt)
 		-- First get any data that has been sent from the other client
 		Network:ReceiveData()
 
+		-- Send any packets that have been queued
+		Network:ProcessDelayedPackets()
+
 		if Network.connectedToClient then
 
 

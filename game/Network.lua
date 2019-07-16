@@ -55,6 +55,8 @@ Network =
 	syncDataTick = {},				-- Records game tick we recorded the sync data for
 
 	latency = 0,					-- Keeps track of the latency.
+
+	toSendPackets = {},				-- Packets that have been queued for sending later. Used to test network latency. 
 }
 
 -- Initialize History Buffer
@@ -169,8 +171,38 @@ function Network:SendPacket(packet, duplicates)
 	end
 
 	for i=1,duplicates do
-		self.udp:sendto(packet, self.clientIP, self.clientPort)
+		if NET_SEND_DELAY_FRAMES > 0 then
+			self:SendPacketWithDelay(packet)
+		else
+			self:SendPacketRaw(packet)
+		end
 	end
+end
+
+-- Queues a packet to be sent later
+function Network:SendPacketWithDelay(packet)
+	local delayedPacket = {packet=packet, time=love.timer.getTime()}
+	table.insert(self.toSendPackets, delayedPacket)
+end
+
+-- Send all packets which have been queued and who's delay time as elapsed.
+function Network:ProcessDelayedPackets()
+	local newPacketList = {}	-- List of packets that haven't been sent yet.
+	local timeInterval = (NET_SEND_DELAY_FRAMES/60) -- How much time must pass (converting from frames into seconds)
+
+	for index,data in pairs(self.toSendPackets) do
+		if (love.timer.getTime() - data.time) > timeInterval then
+			self:SendPacketRaw(data.packet)		-- Send packet when enough time as passed.
+		else
+			table.insert(newPacketList, data)	-- Keep the packet if the not enough time as passed.
+		end
+	end
+	self.toSendPackets = newPacketList
+end
+
+-- Send a packet immediately 
+function Network:SendPacketRaw(packet)
+	self.udp:sendto(packet, self.clientIP, self.clientPort)	
 end
 
 -- Handles receiving packets from the other client.
