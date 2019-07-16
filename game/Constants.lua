@@ -17,6 +17,8 @@ SERVER_IP = "localhost"				-- The network address of the other player to connect
 
 SERVER_PORT = 12345					-- The network port the server is running on.
 NET_INPUT_DELAY	= 3					-- Amount of input delay to use by default during online matches. Should always be > 0
+NET_ROLLBACK_MAX_FRAMES	= 10		-- The maximum number of frame we allow the game run forward without a confirmed frame from the opponent.
+
 
 NET_INPUT_HISTORY_SIZE = 60			-- The size of the input history buffer. Must be atleast 1.
 NET_SEND_HISTORY_SIZE = 3			-- The number of inputs we send from the input history buffer. Must be atleast 1.

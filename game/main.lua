@@ -285,7 +285,7 @@ function love.update(dt)
 			-- Can't update the game when we don't have inputs. 
 			-- This can happen when the other player is behind, so we'll wait to update in order to let the other player catch up.
 			-- Once rollbacks are implemented, this time syncing behavior will become critical to maintain a smooth experience for bother players.
-			if (Network.confirmedTick) >= Game.tick then
+			if (Network.confirmedTick + NET_ROLLBACK_MAX_FRAMES) >= Game.tick then
 				updateGame = true
 				-- NetLog("Updating Game. Local Tick: " .. Game.tick .. "    Confirmed Tick: " .. Network.confirmedTick)
 				-- Set the input state for the current tick for the remote player's character.
@@ -313,8 +313,8 @@ function love.update(dt)
 		-- For now we will just compare the x coordinates of the both players.
 		local syncData = love.data.pack("string", "nn", Game.players[1].physics.x, Game.players[2].physics.x)
 
-		-- Handle sync checking. We only perform this check when a game update occurred. 
-		if updateGame then
+		-- Handle sync checking. We only perform this check when a game update occurred and have a confirmed tick for the latest frame. 
+		if updateGame and ((Game.tick - 1) <= Network.confirmedTick) then
 			local checkFrame = Game.tick - Network.inputDelay - 1
 			local remoteSyncData = Network:GetSyncDataRemote(checkFrame)
 			local localSyncData = Network:GetSyncDataLocal(checkFrame)
@@ -336,6 +336,10 @@ function love.update(dt)
 		-- Send this player's input state. We when Network.inputDelay frames ahead.
 		-- Note: This input comes from the last game update, so we subtract 1 to set the correct tick.
 		Network:SendInputData(InputSystem:GetInputState(InputSystem.localPlayerIndex, Network.inputDelay), Game.tick+Network.inputDelay-1, syncData)
+
+		-- Send ping so we can test network latency.
+		Network:SendPingMessage()
+		
 	end
 end
 

@@ -16,7 +16,9 @@ local MsgCode =
 {
 	Handshake = 1,		-- Used when sending the hand shake.
 	PlayerInput = 2,	-- Sends part of the player's input buffer.
-}
+	Ping = 3,			-- Used to tracking packet round trip time. Expect a "Pong" back.
+	Pong = 4,			-- Sent in reply to a Ping message for testing round trip time.
+ }
 
 -- Bit flags used to convert input state to a form suitable for network transmission. 
 local InputCode =
@@ -52,6 +54,7 @@ Network =
 	
 	syncDataTick = {},				-- Records game tick we recorded the sync data for
 
+	latency = 0,					-- Keeps track of the latency.
 }
 
 -- Initialize History Buffer
@@ -112,6 +115,11 @@ end
 
 -- Get input from the remote player for the passed in game tick.
 function Network:GetRemoteInputState(tick)
+	local offset = tick
+	if tick > self.confirmedTick then
+		-- Repeat the last confirmed input when we don't have a confirmed tick
+		tick = self.confirmedTick
+	end
 	return self:DecodeInput(self.remoteInputHistory[1+(tick % NET_INPUT_HISTORY_SIZE)]) -- First index is 1 not 0.
 end
 
@@ -240,10 +248,18 @@ function Network:ReceiveData()
 					local index = 1+((NET_INPUT_HISTORY_SIZE + startTick) % NET_INPUT_HISTORY_SIZE)
 					self.syncDataHistoryRemote[ index ] = syncData 		-- Keep track of sync data used for confirmed frames.
 					self.syncDataTick[ index ] = receivedTick 		-- Record which game tick we got the sync data for.
+
 				end
 
 				-- NetLog("Received Tick: " .. receivedTick .. ",  Input: " .. self.remoteInputHistory[(self.confirmedTick % NET_INPUT_HISTORY_SIZE)+1])
-			end
+			elseif code == MsgCode.Ping then
+				local pingTime = love.data.unpack("n", data, 2)
+				self:SendPacket(self:MakePongPacket(pingTime))
+			elseif code == MsgCode.Pong then
+				local pongTime = love.data.unpack("n", data, 2)
+				self.latency = love.timer.getTime() - pongTime
+				print("Got pong message: " .. self.latency)
+			end 
 		elseif msg and msg ~= 'timeout' then 
 			error("Network error: "..tostring(msg))
 		end
@@ -267,6 +283,22 @@ function Network:MakeInputPacket(frame, syncData)
 	local data = love.data.pack("string", INPUT_FORMAT_STRING, MsgCode.PlayerInput, syncData, frame, unpack(history))
 	return data
 end
+
+-- Send a ping message in order to test network latency
+function Network:SendPingMessage()
+	self:SendPacket(self:MakePingPacket(love.timer.getTime()))
+end
+
+-- Make a ping packet
+function Network:MakePingPacket(time)
+	return love.data.pack("string", "Bn", MsgCode.Ping, time)
+end
+
+-- Make pong packet
+function Network:MakePongPacket(time)
+	return love.data.pack("string", "Bn", MsgCode.Pong, time)
+end
+
 
 -- Generate handshake packet for connecting with another client.
 function Network:MakeHandshakePacket()
