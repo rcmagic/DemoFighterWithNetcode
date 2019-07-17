@@ -266,6 +266,10 @@ local lastTime = love.timer.getTime()
 function love.update(dt)
 
 	local updateGame = false
+
+	if ROLLBACK_TEST_ENABLED then
+		updateGame = true
+	end
 	
 	-- The network is update first
 	if Network.enabled then
@@ -302,12 +306,65 @@ function love.update(dt)
 
 	end
 
+
 	if updateGame then	
-	
+		-- Test rollbacks
+		if ROLLBACK_TEST_ENABLED then
+
+			-- Store game state before the first update
+			if Game.tick == 0 then
+				Game:StoreState()
+			end
+
+			if Game.tick >= ROLLBACK_TEST_FRAMES then
+				local startTime = love.timer.getTime()
+
+				-- Get sync data that we'll test after the rollback 
+				local syncData = love.data.pack("string", "nn", Game.players[1].physics.y, Game.players[2].physics.y)
+
+				Game:RestoreState()
+				
+				-- Prevent polling for input since we set it directly from the input history.
+				InputSystem.skipPolling = true
+				for i=1,ROLLBACK_TEST_FRAMES do
+					-- Get input from a input history buffer that we update below
+					InputSystem:SetInputState(InputSystem.localPlayerIndex, Network:GetLocalInputState(Game.tick), 1)
+					Game.tick = Game.tick + 1
+					Game:Update()
+
+					-- Store only the first updated state
+					if i == 1 then
+						Game:StoreState()
+					end
+				end
+
+				-- Get the sync data after a rollback and check to see if it matches the data before the rollback.
+				local postSyncData = love.data.pack("string", "nn", Game.players[1].physics.y, Game.players[2].physics.y)
+
+				if syncData ~= postSyncData then
+					love.window.showMessageBox( "Alert", "Rollback Desync Detected", "info", true )
+					love.event.quit(0)
+				end
+
+				-- Restore input polling for the regular update
+				InputSystem.skipPolling = false
+				--NetLog("Rollback Test Duration: " .. love.timer.getTime() - startTime)
+			end
+		end
+
 		-- Increment the tick count only when the game actually updates.
 		Game.tick = Game.tick + 1
 		Game:Update()
+
+		-- Save stage after an update if testing rollbacks
+		if ROLLBACK_TEST_ENABLED then
+			-- Save local input history for this game tick
+			Network:SetLocalInput(InputSystem:GetInputState(InputSystem.localPlayerIndex, 0), Game.tick-1)
+		end
 	end
+
+
+
 
 	-- Since our input is update in Game:Update() we want to send the input as soon as possible. 
 	-- Previously this as happening before the Game:Update() and adding uneeded latency.  
@@ -336,9 +393,12 @@ function love.update(dt)
 		end
 
 
+		-- Update local input history
+		Network:SetLocalInput(InputSystem:GetInputState(InputSystem.localPlayerIndex, Network.inputDelay), Game.tick+Network.inputDelay-1)
+
 		-- Send this player's input state. We when Network.inputDelay frames ahead.
 		-- Note: This input comes from the last game update, so we subtract 1 to set the correct tick.
-		Network:SendInputData(InputSystem:GetInputState(InputSystem.localPlayerIndex, Network.inputDelay), Game.tick+Network.inputDelay-1, syncData)
+		Network:SendInputData(Game.tick+Network.inputDelay-1, syncData)
 
 		-- Send ping so we can test network latency.
 		Network:SendPingMessage()
