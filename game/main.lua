@@ -289,18 +289,27 @@ function love.update(dt)
 		if Network.connectedToClient then
 
 
+			-- Whether or not the game state is confirmed to be in sync
+			local confirmedStateSynced = false
 			-- Can't update the game when we don't have inputs. 
 			-- This can happen when the other player is behind, so we'll wait to update in order to let the other player catch up.
 			-- Once rollbacks are implemented, this time syncing behavior will become critical to maintain a smooth experience for bother players.
-			if (Network.confirmedTick + NET_ROLLBACK_MAX_FRAMES) >= Game.tick then
+			if (Network.confirmedTick) >= Game.tick then
+				confirmedStateSynced = true
+				updateGame = true
+			elseif (Network.confirmedTick + NET_ROLLBACK_MAX_FRAMES) >= Game.tick then
 				updateGame = true
 				-- NetLog("Updating Game. Local Tick: " .. Game.tick .. "    Confirmed Tick: " .. Network.confirmedTick)
-				-- Set the input state for the current tick for the remote player's character.
-				InputSystem:SetInputState(InputSystem.remotePlayerIndex, Network:GetRemoteInputState(Game.tick), 1) -- Offset of 1 ensure it's used for the next game update.
-
+				print( (Game.tick - Network.confirmedTick) .. " frames ahead of the confirmed tick.")
 			else
 				print("Waiting for input at tick " .. Game.tick)
 				updateGame = false
+			end
+
+			if updateGame then
+				-- Set the input state for the current tick for the remote player's character.
+				InputSystem:SetInputState(InputSystem.remotePlayerIndex, Network:GetRemoteInputState(Game.tick), 1) -- Offset of 1 ensure it's used for the next game update.
+
 			end
 		end
 

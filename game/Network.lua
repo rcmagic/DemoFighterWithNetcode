@@ -295,7 +295,7 @@ function Network:ReceiveData()
 			elseif code == MsgCode.Pong then
 				local pongTime = love.data.unpack("n", data, 2)
 				self.latency = love.timer.getTime() - pongTime
-				print("Got pong message: " .. self.latency)
+				--print("Got pong message: " .. self.latency)
 			end 
 		elseif msg and msg ~= 'timeout' then 
 			error("Network error: "..tostring(msg))
