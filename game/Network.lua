@@ -59,6 +59,10 @@ Network =
 	toSendPackets = {},				-- Packets that have been queued for sending later. Used to test network latency. 
 
 	lastSyncedTick = 0,				-- Indicates the last game tick that was confirmed to be in sync.
+
+	localTickDelta = 0,				-- Stores the difference between the last local tick and the remote confirmed tick. Remote client.
+	remoteTickDelta = 0,			-- Stores the difference between the last local tick and the remote confirmed tick sent from the remote client.
+
 }
 
 -- Initialize History Buffer
@@ -238,7 +242,7 @@ end
 
 -- Generates a string which is used to pack/unpack the data in a player input packet.
 -- This format string is used by the love.data.pack() and love.data.unpack() functions.
-local INPUT_FORMAT_STRING = string.format('Bs8j%.' .. NET_SEND_HISTORY_SIZE .. 's', 'BBBBBBBBBBBBBBBB')
+local INPUT_FORMAT_STRING = string.format('Bjs8j%.' .. NET_SEND_HISTORY_SIZE .. 's', 'BBBBBBBBBBBBBBBB')
 
 -- Checks the queue for any incoming packets and process them.
 function Network:ReceiveData()
@@ -275,8 +279,16 @@ function Network:ReceiveData()
 				-- Break apart the packet into its parts.
 				local results = { love.data.unpack(INPUT_FORMAT_STRING, data, 1) } -- Final parameter is the start position
 				
-				local syncData = results[2]
-				local receivedTick = results[3]
+				local tickDelta = results[2]
+				local syncData = results[3]
+				local receivedTick = results[4]
+
+				-- We only care about the latest tick delta, so make sure the confirmed frame is atleast the same or newer.
+				-- This would work better if we added a packet count.
+				if receivedTick >= self.confirmedTick then
+					self.remoteTickDelta = tickDelta
+				end
+
 				if receivedTick > self.confirmedTick then
 					if receivedTick - self.confirmedTick > self.inputDelay then
 						NetLog("Received packet with a tick too far ahead. Last: " .. self.confirmedTick .. "     Current: " .. receivedTick )
@@ -287,10 +299,10 @@ function Network:ReceiveData()
 					for offset=0, NET_SEND_HISTORY_SIZE-1 do 
 						-- Save the input history sent in the packet.
 						local historyIndex = 1 + ( (NET_INPUT_HISTORY_SIZE+receivedTick-offset) % NET_INPUT_HISTORY_SIZE) -- 1 based indexing again.
-						self.remoteInputHistory[historyIndex] = results[3+NET_SEND_HISTORY_SIZE-offset] -- 3 is the index of the first input.
+						self.remoteInputHistory[historyIndex] = results[4+NET_SEND_HISTORY_SIZE-offset] -- 3 is the index of the first input.
 					end
 
-					-- Sync data is actually for the last frame update, which is confirmTick - inputDelay.
+					-- Sync data is actually for the last frame update, which is confirmedTick - inputDelay.
 					local startTick = receivedTick - self.inputDelay
 					local index = 1+((NET_INPUT_HISTORY_SIZE + startTick) % NET_INPUT_HISTORY_SIZE)
 					self.syncDataHistoryRemote[ index ] = syncData 		-- Keep track of sync data used for confirmed frames.
@@ -317,17 +329,17 @@ end
 
 
 -- Generate a packet containing information about player input.
-function Network:MakeInputPacket(frame, syncData)
+function Network:MakeInputPacket(tick, syncData)
 
-	local historyIndexStart = (NET_INPUT_HISTORY_SIZE + (frame - NET_SEND_HISTORY_SIZE+1)) % NET_INPUT_HISTORY_SIZE
+	local historyIndexStart = (NET_INPUT_HISTORY_SIZE + (tick - NET_SEND_HISTORY_SIZE+1)) % NET_INPUT_HISTORY_SIZE
 
 	local history = {}
 	for i=0, NET_SEND_HISTORY_SIZE-1 do
 		history[i+1] = self.inputHistory[(historyIndexStart + i) % NET_INPUT_HISTORY_SIZE + 1] -- +1 here because lua indices start at 1 and not 0.
 	end
 
-	--NetLog('[Packet] tick: ' .. frame .. '      input: ' .. history[NET_SEND_HISTORY_SIZE])
-	local data = love.data.pack("string", INPUT_FORMAT_STRING, MsgCode.PlayerInput, syncData, frame, unpack(history))
+	--NetLog('[Packet] tick: ' .. tick .. '      input: ' .. history[NET_SEND_HISTORY_SIZE])
+	local data = love.data.pack("string", INPUT_FORMAT_STRING, MsgCode.PlayerInput, self.localTickDelta, syncData, tick, unpack(history))
 	return data
 end
 

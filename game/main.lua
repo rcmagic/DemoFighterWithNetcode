@@ -340,29 +340,35 @@ function love.update(dt)
 				InputSystem.skipPolling = false				
 			end
 
-			-- Check whether or not the game state is confirmed to be in sync.
-			-- Since we previously rolled back, it's safe to set the lastSyncTick here since we know any previous frames will be synced.
-			if Network.confirmedTick >= Game.tick then
-				-- Increment the synced tick number if we have inputs
-				Network.lastSyncedTick =  Game.tick
-			end
-			
-			-- Can't update the game when we don't have inputs. 
-			-- This can happen when the other player is behind, so we'll wait to update in order to let the other player catch up.
-			-- Once rollbacks are implemented, this time syncing behavior will become critical to maintain a smooth experience for bother players.
+			-- Calculate the difference between remote game tick and the local. This will be used for syncing.
+			-- We don't use the latest local tick, but the tick for the latest input sent to the remote client.
+			Network.localTickDelta = (Game.tick+Network.inputDelay-1) - Network.confirmedTick
 
-			-- We allow the game to run for NET_ROLLBACK_MAX_FRAMES updates without having input for the current frame.
-			-- Once the game can no longer update, it will wait until the other player's client can catch up.
-			-- Note: We only wait for 1 frame anytime this happens. If NET_ROLLBACK_MAX_FRAMES is high, the local client can be much farther ahead of the remote
-			-- player's game. We will have to do something to address this. If not, we'll constantly see rollbacks occurring locally. 
-			if (Network.confirmedTick + NET_ROLLBACK_MAX_FRAMES) >= Game.tick then
-				updateGame = true
-				-- NetLog("Updating Game. Local Tick: " .. Game.tick .. "    Confirmed Tick: " .. Network.confirmedTick)
-				-- print( (Game.tick - Network.confirmedTick) .. " frames ahead of the confirmed tick.")
-			else
-				print("Waiting for input at tick " .. Game.tick)
+
+			-- Prevent updating the game when the tick difference is greater on this end.
+			-- This allows the game deltas to be off by atleast on frame. Our timing is only accurate to one frame so any slight increase in network latency
+			-- would cause the game to constantly hold. You could increase this tolerance, but this would up the advantage for one player over the other.
+			local hold = (Network.localTickDelta - Network.remoteTickDelta) > 1 
+			
+			-- Hold until the tick deltas match.
+			if hold then
+				print("Hold. Tick Delta = Local: " .. Network.localTickDelta .. ", Remote: " .. Network.remoteTickDelta)
 				updateGame = false
+			else
+				-- We allow the game to run for NET_ROLLBACK_MAX_FRAMES updates without having input for the current frame.
+				-- Once the game can no longer update, it will wait until the other player's client can catch up.
+				if (Network.confirmedTick + NET_ROLLBACK_MAX_FRAMES) >= Game.tick then
+				
+					updateGame = true
+					-- NetLog("Updating Game. Local Tick: " .. Game.tick .. "    Confirmed Tick: " .. Network.confirmedTick)
+					-- print( (Game.tick - Network.confirmedTick) .. " frames ahead of the confirmed tick.")
+				else
+					--print("Waiting for input at tick " .. Game.tick)
+					updateGame = false
+				end
 			end
+
+
 
 			if updateGame then
 				-- Set the input state for the current tick for the remote player's character.
@@ -377,11 +383,6 @@ function love.update(dt)
 	if updateGame then	
 		-- Test rollbacks
 		if ROLLBACK_TEST_ENABLED then
-
-			-- Store game state before the first update
-			if Game.tick == 0 then
-				Game:StoreState()
-			end
 
 			if Game.tick >= ROLLBACK_TEST_FRAMES then
 				local startTime = love.timer.getTime()
@@ -424,6 +425,15 @@ function love.update(dt)
 		-- Increment the tick count only when the game actually updates.
 		Game.tick = Game.tick + 1
 		Game:Update()
+
+		-- Check whether or not the game state is confirmed to be in sync.
+		-- Since we previously rolled back, it's safe to set the lastSyncTick here since we know any previous frames will be synced.
+		if Network.connectedToClient and Network.confirmedTick >= Game.tick then
+			Game:StoreState()
+			-- Increment the synced tick number if we have inputs
+			Network.lastSyncedTick =  Game.tick
+		end
+
 
 		-- Save stage after an update if testing rollbacks
 		if ROLLBACK_TEST_ENABLED then
