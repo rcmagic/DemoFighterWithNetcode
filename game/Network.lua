@@ -57,6 +57,8 @@ Network =
 	latency = 0,					-- Keeps track of the latency.
 
 	toSendPackets = {},				-- Packets that have been queued for sending later. Used to test network latency. 
+
+	lastSyncedTick = 0,				-- Indicates the last game tick that was confirmed to be in sync.
 }
 
 -- Initialize History Buffer
@@ -124,6 +126,7 @@ function Network:GetRemoteInputState(tick)
 	return self:DecodeInput(self.remoteInputHistory[1+(tick % NET_INPUT_HISTORY_SIZE)]) -- First index is 1 not 0.
 end
 
+-- Get input state for the local client
 function Network:GetLocalInputState(tick)
 	return self:DecodeInput(self.inputHistory[1+(tick % NET_INPUT_HISTORY_SIZE)]) -- First index is 1 not 0.
 end
@@ -136,10 +139,17 @@ function Network:GetSyncDataLocal(tick)
 
 end
 
+-- Get sync data from the remote client.
 function Network:GetSyncDataRemote(tick)
 	local index = 1+(tick % NET_INPUT_HISTORY_SIZE)
 
 	return self.syncDataHistoryRemote[index] -- First index is 1 not 0.
+end
+
+-- Set sync data for a game tick
+function Network:SetLocalSyncData(tick, syncData)
+	local startTick = tick - self.inputDelay 
+	self.syncDataHistoryLocal[1+((NET_INPUT_HISTORY_SIZE + startTick) % NET_INPUT_HISTORY_SIZE)] = syncData
 end
 
 -- Connects to the other player who is hosting as the server.d
@@ -149,7 +159,7 @@ function Network:ConnectToServer()
 end
 
 -- Send the inputState for the local player to the remote player for the given game tick.
-function Network:SendInputData(tick, syncData)
+function Network:SendInputData(tick)
 
 	-- Don't send input data when not connect to another player's game client.
 	if not (self.enabled and self.connectedToClient) then
@@ -158,8 +168,8 @@ function Network:SendInputData(tick, syncData)
 
 	-- NetLog("Sending Input: " .. tick .. ",  Input: " .. encodedInput)
 
-	local startTick = tick - self.inputDelay
-	self.syncDataHistoryLocal[1+((NET_INPUT_HISTORY_SIZE + startTick) % NET_INPUT_HISTORY_SIZE)] = syncData
+	-- Get sync data for the first frame of the packet we're sending.
+	local syncData = self:GetSyncDataLocal(tick - self.inputDelay)
 
 	self:SendPacket(self:MakeInputPacket(tick, syncData), 1)
 end

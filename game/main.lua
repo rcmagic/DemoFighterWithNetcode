@@ -258,6 +258,15 @@ function love.load()
 	Game.network = Network
 
 	Game:Reset()
+
+	-- Store game state before the first update
+	Game:StoreState()
+end
+
+-- Gets the sync data to confirm the client game states are in sync
+function Game:GetSyncData()
+	-- For now we will just compare the x coordinates of the both players
+	return love.data.pack("string", "nn", self.players[1].physics.x, self.players[2].physics.x)
 end
 
 -- Used for testing performance. 
@@ -288,19 +297,68 @@ function love.update(dt)
 
 		if Network.connectedToClient then
 
+			-- The input needed to resync state is available so rollback.
+			-- Network.lastSyncedTick keeps track of how many game updates have been synced. 
+			-- When the tick count for the inputs we have is more than the number of synced ticks it's possible to rerun those game updates
+			-- with a rollback.
+			if Game.tick > Network.lastSyncedTick and Network.confirmedTick > Network.lastSyncedTick then
+			
+				-- The number of frames that's elasped since the game has been out of sync.
+				-- Rerun rollbackFrames number of updates. 
+				local rollbackFrames = Game.tick - Network.lastSyncedTick
 
-			-- Whether or not the game state is confirmed to be in sync
-			local confirmedStateSynced = false
+				print("Rollback frames: " .. rollbackFrames)
+
+				-- Must revert back to the last known synced game frame.
+				Game:RestoreState()
+				
+				-- Prevent polling for input since we set it directly from the input history.
+				InputSystem.skipPolling = true
+				for i=1,rollbackFrames do
+					-- Get input from the input history buffer. The network system will predict input after the last confirmed tick (for the remote player).
+					InputSystem:SetInputState(InputSystem.localPlayerIndex, Network:GetLocalInputState(Game.tick), 1) -- Offset of 1 ensure it's used for the next game update.
+					InputSystem:SetInputState(InputSystem.remotePlayerIndex, Network:GetRemoteInputState(Game.tick), 1) 
+
+					Game.tick = Game.tick + 1
+					Game:Update()
+
+					-- Confirm that we are indeed still synced
+					if Network.confirmedTick >= Game.tick then
+						-- TODO: Test for state desync here. We will use the remote client's sync test data to ensure the game states don't diverge after a rollback.
+
+						-- Store the state since we know it's synced. We really only need to call this on the last synced frame. 
+						-- Leaving in for demonstration purposes.
+						Game:StoreState()
+						Network.lastSyncedTick = Game.tick
+
+						-- Update sync data
+						Network:SetLocalSyncData(Game.tick+Network.inputDelay-1, Game:GetSyncData())
+					end
+				end
+
+				-- Restore input polling for the regular update
+				InputSystem.skipPolling = false				
+			end
+
+			-- Check whether or not the game state is confirmed to be in sync.
+			-- Since we previously rolled back, it's safe to set the lastSyncTick here since we know any previous frames will be synced.
+			if Network.confirmedTick >= Game.tick then
+				-- Increment the synced tick number if we have inputs
+				Network.lastSyncedTick =  Game.tick
+			end
+			
 			-- Can't update the game when we don't have inputs. 
 			-- This can happen when the other player is behind, so we'll wait to update in order to let the other player catch up.
 			-- Once rollbacks are implemented, this time syncing behavior will become critical to maintain a smooth experience for bother players.
-			if (Network.confirmedTick) >= Game.tick then
-				confirmedStateSynced = true
-				updateGame = true
-			elseif (Network.confirmedTick + NET_ROLLBACK_MAX_FRAMES) >= Game.tick then
+
+			-- We allow the game to run for NET_ROLLBACK_MAX_FRAMES updates without having input for the current frame.
+			-- Once the game can no longer update, it will wait until the other player's client can catch up.
+			-- Note: We only wait for 1 frame anytime this happens. If NET_ROLLBACK_MAX_FRAMES is high, the local client can be much farther ahead of the remote
+			-- player's game. We will have to do something to address this. If not, we'll constantly see rollbacks occurring locally. 
+			if (Network.confirmedTick + NET_ROLLBACK_MAX_FRAMES) >= Game.tick then
 				updateGame = true
 				-- NetLog("Updating Game. Local Tick: " .. Game.tick .. "    Confirmed Tick: " .. Network.confirmedTick)
-				print( (Game.tick - Network.confirmedTick) .. " frames ahead of the confirmed tick.")
+				-- print( (Game.tick - Network.confirmedTick) .. " frames ahead of the confirmed tick.")
 			else
 				print("Waiting for input at tick " .. Game.tick)
 				updateGame = false
@@ -338,6 +396,8 @@ function love.update(dt)
 				for i=1,ROLLBACK_TEST_FRAMES do
 					-- Get input from a input history buffer that we update below
 					InputSystem:SetInputState(InputSystem.localPlayerIndex, Network:GetLocalInputState(Game.tick), 1)
+					InputSystem:SetInputState(InputSystem.remotePlayerIndex, Network:GetRemoteInputState(Game.tick), 1)
+
 					Game.tick = Game.tick + 1
 					Game:Update()
 
@@ -379,27 +439,26 @@ function love.update(dt)
 	-- Previously this as happening before the Game:Update() and adding uneeded latency.  
 	if Network.enabled and Network.connectedToClient  then
 		-- Generate the data we'll send to the other player for testing that their game state is in sync.
-		-- For now we will just compare the x coordinates of the both players.
-		local syncData = love.data.pack("string", "nn", Game.players[1].physics.x, Game.players[2].physics.x)
+		Network:SetLocalSyncData(Game.tick+Network.inputDelay-1, Game:GetSyncData())
 
 		-- Handle sync checking. We only perform this check when a game update occurred and have a confirmed tick for the latest frame. 
-		if updateGame and ((Game.tick - 1) <= Network.confirmedTick) then
-			local checkFrame = Game.tick - Network.inputDelay - 1
-			local remoteSyncData = Network:GetSyncDataRemote(checkFrame)
-			local localSyncData = Network:GetSyncDataLocal(checkFrame)
-			-- Compare sync data. We only include sync check data for the latest confirmed frame, so may not always have it.
-			if Game.tick > Network.inputDelay and remoteSyncData ~= localSyncData then
-				NetLog("Desync at frame: " .. checkFrame)
-				-- Print the x coordinates so we can see which coordinates are off.
-				local p1x, p2x = love.data.unpack("nn", localSyncData, 1)
-				NetLog("[Local]  P1.x: " .. p1x .. "     P2.x: " .. p2x )
-				local p1x, p2x = love.data.unpack("nn", remoteSyncData, 1)
-				NetLog("[Remote] P1.x: " .. p1x .. "     P2.x: " .. p2x )
+		-- if updateGame and ((Game.tick - 1) <= Network.confirmedTick) then
+		-- 	local checkFrame = Game.tick - Network.inputDelay - 1
+		-- 	local remoteSyncData = Network:GetSyncDataRemote(checkFrame)
+		-- 	local localSyncData = Network:GetSyncDataLocal(checkFrame)
+		-- 	-- Compare sync data. We only include sync check data for the latest confirmed frame, so may not always have it.
+		-- 	if Game.tick > Network.inputDelay and remoteSyncData ~= localSyncData then
+		-- 		NetLog("Desync at frame: " .. checkFrame)
+		-- 		-- Print the x coordinates so we can see which coordinates are off.
+		-- 		local p1x, p2x = love.data.unpack("nn", localSyncData, 1)
+		-- 		NetLog("[Local]  P1.x: " .. p1x .. "     P2.x: " .. p2x )
+		-- 		local p1x, p2x = love.data.unpack("nn", remoteSyncData, 1)
+		-- 		NetLog("[Remote] P1.x: " .. p1x .. "     P2.x: " .. p2x )
 
-				-- Sync the state is out of sync, the log afterward is pretty useless so exiting here. Also helps to know when a desync occurred. 
-				love.event.quit(0)
-			end
-		end
+		-- 		-- Sync the state is out of sync, the log afterward is pretty useless so exiting here. Also helps to know when a desync occurred. 
+		-- 		love.event.quit(0)
+		-- 	end
+		-- end
 
 
 		-- Update local input history
@@ -407,7 +466,7 @@ function love.update(dt)
 
 		-- Send this player's input state. We when Network.inputDelay frames ahead.
 		-- Note: This input comes from the last game update, so we subtract 1 to set the correct tick.
-		Network:SendInputData(Game.tick+Network.inputDelay-1, syncData)
+		Network:SendInputData(Game.tick+Network.inputDelay-1)
 
 		-- Send ping so we can test network latency.
 		Network:SendPingMessage()
