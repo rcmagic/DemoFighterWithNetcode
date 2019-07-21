@@ -266,7 +266,50 @@ end
 -- Gets the sync data to confirm the client game states are in sync
 function Game:GetSyncData()
 	-- For now we will just compare the x coordinates of the both players
-	return love.data.pack("string", "nn", self.players[1].physics.x, self.players[2].physics.x)
+	return love.data.pack("string", "nn", self.players[1].physics.xVel, self.players[2].physics.xVel)
+end
+
+-- Checks whether or not a game state desync has occurred between the local and remote clients.
+function Game:SyncCheck()
+
+	-- Handle sync checking. We only perform this check when a game update occurred and have a confirmed tick for the latest frame. 
+	if self.tick == Network.lastSyncedTick then
+
+		local checkFrame = self.tick - Network.inputDelay - 1
+		local remoteSyncData = Network:GetSyncDataRemote(checkFrame)
+		local localSyncData = Network:GetSyncDataLocal(checkFrame)
+
+		-- Compare sync data. We only include sync check data for the latest confirmed frame, so may not always have it.
+		if self.tick > Network.inputDelay and remoteSyncData ~= localSyncData then
+			NetLog("Desync at frame: " .. checkFrame)
+			-- Print the x coordinates so we can see which coordinates are off.
+			local p1x, p2x = love.data.unpack("nn", localSyncData, 1)
+			NetLog("[Local]  P1.x: " .. p1x .. "     P2.x: " .. p2x )
+			local p1x, p2x = love.data.unpack("nn", remoteSyncData, 1)
+			NetLog("[Remote] P1.x: " .. p1x .. "     P2.x: " .. p2x )
+
+			local startTick = (Game.tick+1) - NET_INPUT_HISTORY_SIZE
+
+			local inputHistory ={ Network.inputHistory, Network.remoteInputHistory}
+
+			if InputSystem.localPlayerIndex == 2 then
+				inputHistory = { Network.remoteInputHistory, Network.inputHistory }
+			end
+
+
+			for i=0, NET_INPUT_HISTORY_SIZE-1 do 
+				local index = ((startTick+i) % NET_INPUT_HISTORY_SIZE)+1
+				local p1x, p2x = love.data.unpack("nn", Network.syncDataHistoryLocal[index], 1)
+
+				NetLog("[Input][" .. (startTick + i) .. "] Local: " .. inputHistory[1][index] .. "     Remote: " .. inputHistory[2][index] .. 
+				"           State: " ..  p1x .. ", " .. p2x)
+			end
+
+			love.window.showMessageBox( "Alert", "Desync detected", "info", true )
+			-- the log afterward is pretty useless so exiting here. Also helps to know when a desync occurred. 
+			love.event.quit(0)
+		end
+	end
 end
 
 -- Used for testing performance. 
@@ -333,6 +376,8 @@ function love.update(dt)
 
 						-- Update sync data
 						Network:SetLocalSyncData(Game.tick+Network.inputDelay-1, Game:GetSyncData())
+						-- Confirm the game clients are in sync
+						Game:SyncCheck()
 					end
 				end
 
@@ -427,7 +472,7 @@ function love.update(dt)
 		Game:Update()
 
 		-- Check whether or not the game state is confirmed to be in sync.
-		-- Since we previously rolled back, it's safe to set the lastSyncTick here since we know any previous frames will be synced.
+		-- Since we previously rolled back, it's safe to set the lastSyncedTick here since we know any previous frames will be synced.
 		if Network.connectedToClient and Network.confirmedTick >= Game.tick then
 			Game:StoreState()
 			-- Increment the synced tick number if we have inputs
@@ -451,25 +496,10 @@ function love.update(dt)
 		-- Generate the data we'll send to the other player for testing that their game state is in sync.
 		Network:SetLocalSyncData(Game.tick+Network.inputDelay-1, Game:GetSyncData())
 
-		-- Handle sync checking. We only perform this check when a game update occurred and have a confirmed tick for the latest frame. 
-		-- if updateGame and ((Game.tick - 1) <= Network.confirmedTick) then
-		-- 	local checkFrame = Game.tick - Network.inputDelay - 1
-		-- 	local remoteSyncData = Network:GetSyncDataRemote(checkFrame)
-		-- 	local localSyncData = Network:GetSyncDataLocal(checkFrame)
-		-- 	-- Compare sync data. We only include sync check data for the latest confirmed frame, so may not always have it.
-		-- 	if Game.tick > Network.inputDelay and remoteSyncData ~= localSyncData then
-		-- 		NetLog("Desync at frame: " .. checkFrame)
-		-- 		-- Print the x coordinates so we can see which coordinates are off.
-		-- 		local p1x, p2x = love.data.unpack("nn", localSyncData, 1)
-		-- 		NetLog("[Local]  P1.x: " .. p1x .. "     P2.x: " .. p2x )
-		-- 		local p1x, p2x = love.data.unpack("nn", remoteSyncData, 1)
-		-- 		NetLog("[Remote] P1.x: " .. p1x .. "     P2.x: " .. p2x )
-
-		-- 		-- Sync the state is out of sync, the log afterward is pretty useless so exiting here. Also helps to know when a desync occurred. 
-		-- 		love.event.quit(0)
-		-- 	end
-		-- end
-
+		-- Confirm the game clients are in sync
+		if updateGame then
+			Game:SyncCheck()
+		end
 
 		-- Update local input history
 		Network:SetLocalInput(InputSystem:GetInputState(InputSystem.localPlayerIndex, Network.inputDelay), Game.tick+Network.inputDelay-1)
