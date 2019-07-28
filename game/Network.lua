@@ -3,11 +3,20 @@ require("Util")
 local socket = require("socket")
 
 local netlogName = 'netlog-'.. os.time(os.date("!*t")) ..'.txt'
+local packetLogName = 'packetLog-'.. os.time(os.date("!*t")) ..'.txt'
+
+
 -- Create net log file
 love.filesystem.write(netlogName, 'Network log start\r\n')
+love.filesystem.write(packetLogName, 'Packet log start\r\n')
 
 function NetLog(data)
 	love.filesystem.append(netlogName, data  .. '\r\n')
+	-- print(data)
+end
+
+function PacketLog(data)
+	love.filesystem.append(packetLogName, data  .. '\r\n')
 	-- print(data)
 end
 
@@ -18,6 +27,7 @@ local MsgCode =
 	PlayerInput = 2,	-- Sends part of the player's input buffer.
 	Ping = 3,			-- Used to tracking packet round trip time. Expect a "Pong" back.
 	Pong = 4,			-- Sent in reply to a Ping message for testing round trip time.
+	Sync = 5,			-- Used to pass sync data
  }
 
 -- Bit flags used to convert input state to a form suitable for network transmission. 
@@ -29,6 +39,13 @@ local InputCode =
 	Right 	= bit.lshift(1, 3),
 	Attack 	= bit.lshift(1, 4),
 }
+
+-- Generates a string which is used to pack/unpack the data in a player input packet.
+-- This format string is used by the love.data.pack() and love.data.unpack() functions.
+local INPUT_FORMAT_STRING = string.format('Bjj%.' .. NET_SEND_HISTORY_SIZE .. 's', 'BBBBBBBBBBBBBBBB')
+
+-- Packing string for sync data
+local SYNC_DATA_FORMAT_STRING = 'Bjs8'
 
 -- This object will handle all network related functionality 
 Network = 
@@ -51,28 +68,37 @@ Network =
 
 	syncDataHistoryLocal = {},		-- Keeps track of the sync data for the local client
 	syncDataHistoryRemote = {},		-- Keeps track of the sync data for the remote client
-	
-	syncDataTick = {},				-- Records game tick we recorded the sync data for
 
+	syncDataTicks = {},				-- Keeps track of the tick for each sync data index
+	
 	latency = 0,					-- Keeps track of the latency.
 
 	toSendPackets = {},				-- Packets that have been queued for sending later. Used to test network latency. 
 
-	lastSyncedTick = 0,				-- Indicates the last game tick that was confirmed to be in sync.
+	lastSyncedTick =-1,				-- Indicates the last game tick that was confirmed to be in sync.
 
 	localTickDelta = 0,				-- Stores the difference between the last local tick and the remote confirmed tick. Remote client.
 	remoteTickDelta = 0,			-- Stores the difference between the last local tick and the remote confirmed tick sent from the remote client.
+
+	desyncCheckRate = 20,			-- The rate at which we check for state desyncs. 
+	localSyncData = nil,			-- Latest local data for state desync checking.
+	remoteSyncData = nil,			-- Latest remote data for state desync checking.
+	localSyncDataTick = -1,		-- Tick for the latest local desync data.
+	remoteSyncDataTick = -1,	-- Tick for the latest remote desync data.	
+
+	isStateDesynced = false,		-- Set to true once a game state desync is detected.
 
 }
 
 -- Initialize History Buffer
 function Network:InitializeInputHistoryBuffer()
+	-- local emptySyncData = love.data.pack("string", "nn", 0, 0)
 	for i=1,NET_INPUT_HISTORY_SIZE do
 		self.inputHistory[i] = 0
 		self.remoteInputHistory[i] = 0
 		self.syncDataHistoryLocal[i] = nil
 		self.syncDataHistoryRemote[i] = nil
-		self.syncDataTick[i] = -1
+		self.syncDataTicks[i] = nil
 	end
 end
 
@@ -82,6 +108,7 @@ Network:InitializeInputHistoryBuffer()
 -- Setup a network connection at connect to the server.
 function Network:StartConnection()
 	print("Starting Network")
+	NetLog("Starting Client")
 
 	-- the address and port of the server
 	local address, port = SERVER_IP, SERVER_PORT	
@@ -107,6 +134,7 @@ end
 function Network:StartServer()
 
 	print("Starting Server")
+	NetLog("Starting Server")
 
 	self.enabled = true
 	self.isServer = true
@@ -127,33 +155,57 @@ function Network:GetRemoteInputState(tick)
 		-- Repeat the last confirmed input when we don't have a confirmed tick
 		tick = self.confirmedTick
 	end
-	return self:DecodeInput(self.remoteInputHistory[1+(tick % NET_INPUT_HISTORY_SIZE)]) -- First index is 1 not 0.
+	return self:DecodeInput(self.remoteInputHistory[1+((NET_INPUT_HISTORY_SIZE + tick) % NET_INPUT_HISTORY_SIZE)]) -- First index is 1 not 0.
 end
 
 -- Get input state for the local client
 function Network:GetLocalInputState(tick)
-	return self:DecodeInput(self.inputHistory[1+(tick % NET_INPUT_HISTORY_SIZE)]) -- First index is 1 not 0.
+	return self:DecodeInput(self.inputHistory[1+((NET_INPUT_HISTORY_SIZE + tick) % NET_INPUT_HISTORY_SIZE)]) -- First index is 1 not 0.
+end
+
+function Network:GetLocalInputEncoded(tick)
+	return self.inputHistory[1+((NET_INPUT_HISTORY_SIZE + tick) % NET_INPUT_HISTORY_SIZE)] -- First index is 1 not 0.
 end
 
 
 -- Get the sync data which is used to check for game state desync between the clients.
 function Network:GetSyncDataLocal(tick)
-	local index = 1+(tick % NET_INPUT_HISTORY_SIZE)
+	local index = 1+( (NET_INPUT_HISTORY_SIZE + tick) % NET_INPUT_HISTORY_SIZE)
 	return self.syncDataHistoryLocal[index] -- First index is 1 not 0.
-
 end
 
 -- Get sync data from the remote client.
 function Network:GetSyncDataRemote(tick)
-	local index = 1+(tick % NET_INPUT_HISTORY_SIZE)
+	local index = 1+( (NET_INPUT_HISTORY_SIZE + tick) % NET_INPUT_HISTORY_SIZE)
 
 	return self.syncDataHistoryRemote[index] -- First index is 1 not 0.
 end
 
 -- Set sync data for a game tick
 function Network:SetLocalSyncData(tick, syncData)
-	local startTick = tick - self.inputDelay 
-	self.syncDataHistoryLocal[1+((NET_INPUT_HISTORY_SIZE + startTick) % NET_INPUT_HISTORY_SIZE)] = syncData
+	if not self.isStateDesynced then
+		self.localSyncData = syncData
+		self.localSyncDataTick = tick
+	end
+end
+
+-- Check for a desync.
+function Network:DesyncCheck()
+	if self.localSyncDataTick < 0 then
+		return
+	end
+
+	-- When the local sync data does not match the remote data indicate a desync has occurred. 
+	if self.isStateDesynced or self.localSyncDataTick == self.remoteSyncDataTick then
+		-- print("Desync Check at: " .. self.localSyncDataTick)
+
+		if self.localSyncData ~= self.remoteSyncData then
+			self.isStateDesynced = true
+			return true, self.localSyncDataTick
+		end
+	end
+
+	return false
 end
 
 -- Connects to the other player who is hosting as the server.d
@@ -170,17 +222,16 @@ function Network:SendInputData(tick)
 		return
 	end
 
-	-- NetLog("Sending Input: " .. tick .. ",  Input: " .. encodedInput)
-
-	-- Get sync data for the first frame of the packet we're sending.
-	local syncData = self:GetSyncDataLocal(tick - self.inputDelay)
-
 	self:SendPacket(self:MakeInputPacket(tick, syncData), 1)
 end
 
 function Network:SetLocalInput(inputState, tick)
 	local encodedInput = self:EncodeInput(inputState)
-	self.inputHistory[1+(tick % NET_INPUT_HISTORY_SIZE)] = encodedInput -- 1 base indexing.
+	self.inputHistory[1+((NET_INPUT_HISTORY_SIZE + tick) % NET_INPUT_HISTORY_SIZE)] = encodedInput -- 1 base indexing.
+end
+
+function Network:SetRemoteEncodedInput(encodedInput, tick)
+	self.remoteInputHistory[1+((NET_INPUT_HISTORY_SIZE + tick) % NET_INPUT_HISTORY_SIZE)] = encodedInput -- 1 base indexing.
 end
 
 -- Handles sending packets to the other client. Set duplicates to something > 0 to send more than once.
@@ -240,9 +291,6 @@ function Network:ReceivePacket(packet)
 	return data, msg, ip_or_msg, port
 end
 
--- Generates a string which is used to pack/unpack the data in a player input packet.
--- This format string is used by the love.data.pack() and love.data.unpack() functions.
-local INPUT_FORMAT_STRING = string.format('Bjs8j%.' .. NET_SEND_HISTORY_SIZE .. 's', 'BBBBBBBBBBBBBBBB')
 
 -- Checks the queue for any incoming packets and process them.
 function Network:ReceiveData()
@@ -280,8 +328,7 @@ function Network:ReceiveData()
 				local results = { love.data.unpack(INPUT_FORMAT_STRING, data, 1) } -- Final parameter is the start position
 				
 				local tickDelta = results[2]
-				local syncData = results[3]
-				local receivedTick = results[4]
+				local receivedTick = results[3]
 
 				-- We only care about the latest tick delta, so make sure the confirmed frame is atleast the same or newer.
 				-- This would work better if we added a packet count.
@@ -296,17 +343,12 @@ function Network:ReceiveData()
 
 					self.confirmedTick = receivedTick
 
+					-- PacketLog("Received Input: " .. results[3+NET_SEND_HISTORY_SIZE] .. " @ " ..  receivedTick) 
+
 					for offset=0, NET_SEND_HISTORY_SIZE-1 do 
 						-- Save the input history sent in the packet.
-						local historyIndex = 1 + ( (NET_INPUT_HISTORY_SIZE+receivedTick-offset) % NET_INPUT_HISTORY_SIZE) -- 1 based indexing again.
-						self.remoteInputHistory[historyIndex] = results[4+NET_SEND_HISTORY_SIZE-offset] -- 3 is the index of the first input.
+						self:SetRemoteEncodedInput(results[3+NET_SEND_HISTORY_SIZE-offset] , receivedTick-offset)
 					end
-
-					-- Sync data is actually for the last frame update, which is confirmedTick - inputDelay.
-					local startTick = receivedTick - self.inputDelay
-					local index = 1+((NET_INPUT_HISTORY_SIZE + startTick) % NET_INPUT_HISTORY_SIZE)
-					self.syncDataHistoryRemote[ index ] = syncData 		-- Keep track of sync data used for confirmed frames.
-					self.syncDataTick[ index ] = receivedTick 		-- Record which game tick we got the sync data for.
 
 				end
 
@@ -318,6 +360,17 @@ function Network:ReceiveData()
 				local pongTime = love.data.unpack("n", data, 2)
 				self.latency = love.timer.getTime() - pongTime
 				--print("Got pong message: " .. self.latency)
+			elseif code == MsgCode.Sync then
+				local code, tick, syncData =  love.data.unpack(SYNC_DATA_FORMAT_STRING, data, 1)
+				-- Ignore any tick that isn't more recent than the last sync data
+				if not self.isStateDesynced and tick > self.remoteSyncDataTick then
+					self.remoteSyncDataTick = tick
+					self.remoteSyncData = syncData
+					
+					-- Check for a desync
+					self:DesyncCheck()
+				end
+
 			end 
 		elseif msg and msg ~= 'timeout' then 
 			error("Network error: "..tostring(msg))
@@ -329,17 +382,16 @@ end
 
 
 -- Generate a packet containing information about player input.
-function Network:MakeInputPacket(tick, syncData)
+function Network:MakeInputPacket(tick)
 
-	local historyIndexStart = (NET_INPUT_HISTORY_SIZE + (tick - NET_SEND_HISTORY_SIZE+1)) % NET_INPUT_HISTORY_SIZE
-
+	local historyIndexStart = tick - NET_SEND_HISTORY_SIZE + 1
 	local history = {}
 	for i=0, NET_SEND_HISTORY_SIZE-1 do
-		history[i+1] = self.inputHistory[(historyIndexStart + i) % NET_INPUT_HISTORY_SIZE + 1] -- +1 here because lua indices start at 1 and not 0.
+		history[i+1] = self.inputHistory[((NET_INPUT_HISTORY_SIZE + historyIndexStart + i) % NET_INPUT_HISTORY_SIZE) + 1] -- +1 here because lua indices start at 1 and not 0.
 	end
 
 	--NetLog('[Packet] tick: ' .. tick .. '      input: ' .. history[NET_SEND_HISTORY_SIZE])
-	local data = love.data.pack("string", INPUT_FORMAT_STRING, MsgCode.PlayerInput, self.localTickDelta, syncData, tick, unpack(history))
+	local data = love.data.pack("string", INPUT_FORMAT_STRING, MsgCode.PlayerInput, self.localTickDelta, tick, unpack(history))
 	return data
 end
 
@@ -358,6 +410,15 @@ function Network:MakePongPacket(time)
 	return love.data.pack("string", "Bn", MsgCode.Pong, time)
 end
 
+-- Sends sync data
+function Network:SendSyncData()
+	self:SendPacket(self:MakeSyncDataPacket(self.localSyncDataTick, self.localSyncData), 5)
+end
+
+-- Make a sync data packet
+function Network:MakeSyncDataPacket(tick, syncData)
+	return love.data.pack("string", SYNC_DATA_FORMAT_STRING, MsgCode.Sync, tick, syncData)
+end
 
 -- Generate handshake packet for connecting with another client.
 function Network:MakeHandshakePacket()

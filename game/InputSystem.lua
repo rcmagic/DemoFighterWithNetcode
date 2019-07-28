@@ -13,7 +13,6 @@ InputSystem =
 	remotePlayerState = {},			-- Store the input state for the remote player.
 
 	playerCommandBuffer = {{}, {}},	-- A ring buffer. Stores the on/off state for each basic input command.
-	inputBufferIndex = 0,			-- The current index used to update and read player input commands. Starting at 0
 
 	inputDelay = 0,					-- Specify how many frames the player's inputs will be delayed by. Used in networking. Increase this value to test delay!
 
@@ -22,31 +21,34 @@ InputSystem =
 	skipPolling = false,			-- Prevents polling for input during an update. Used to test rollbacks.
 }
 
+function InputSystem:InputIndex(offset)
+	local tick = self.game.tick
+	if offset then
+		tick = tick + offset
+	end
+
+	return 1 + ((InputSystem.MAX_INPUT_FRAMES + tick) % InputSystem.MAX_INPUT_FRAMES)
+end
+
 
 -- Used in the rollback system to make a copy of the input system state
 function InputSystem:CopyState()
 	local state = {}
 	state.playerCommandBuffer = table.deep_copy(self.playerCommandBuffer)
-	state.inputBufferIndex = self.inputBufferIndex
 	return state
 end
 
 -- Used in the rollback system to restore the old state of the input system
 function InputSystem:SetState(state)
 	self.playerCommandBuffer = state.playerCommandBuffer
-	self.inputBufferIndex = state.inputBufferIndex
 end
 
 
 -- Get the entire input state for the current from a player's input command buffer.
-function InputSystem:GetInputState(bufferIndex, offset)
-
-	local inputFrame = self.inputBufferIndex
-	if offset then
-		-- The 1 appearing are because lua arrays used 1 based and not 0 based indexes.
-		inputFrame = 1 + ((InputSystem.MAX_INPUT_FRAMES+self.inputBufferIndex + offset-1) % InputSystem.MAX_INPUT_FRAMES)
-	end
-
+function InputSystem:GetInputState(bufferIndex, tick)
+	-- The 1 appearing here is because lua arrays used 1 based and not 0 based indexes.
+	local inputFrame = 1 + ((InputSystem.MAX_INPUT_FRAMES + tick ) % InputSystem.MAX_INPUT_FRAMES)
+	
 	local state = self.playerCommandBuffer[bufferIndex][inputFrame]
 	if not state then
 		return {}
@@ -54,15 +56,15 @@ function InputSystem:GetInputState(bufferIndex, offset)
 	return state
 end
 
--- Directly set the input state or the player. This is used for a online match.
-function InputSystem:SetInputState(playerIndex, state, offset)
-	local inputFrame = self.inputBufferIndex
-	if offset then
-		-- The 1 appearing are because lua arrays used 1 based and not 0 based indexes.
-		inputFrame = 1 + ((InputSystem.MAX_INPUT_FRAMES+self.inputBufferIndex + offset-1) % InputSystem.MAX_INPUT_FRAMES)
-	end
+-- Get the current input state for a player
+function InputSystem:CurrentInputState(bufferIndex)
+	return self:GetInputState(bufferIndex, self.game.tick)
+end
 
-	self.playerCommandBuffer[playerIndex][inputFrame] = table.copy(state)
+-- Directly set the input state or the player. This is used for a online match.
+function InputSystem:SetInputState(playerIndex, state)
+	local stateCopy = table.copy(state)
+	self.playerCommandBuffer[playerIndex][self:InputIndex()] = stateCopy
 end
 
 -- Initialize the player input command ring buffer.
@@ -74,14 +76,12 @@ end
 
 -- Record inputs the player pressed this frame.
 function InputSystem:UpdateInputChanges()
-	local previousIndex = self.inputBufferIndex - 1
-	if previousIndex < 1 then
-		previousIndex = InputSystem.MAX_INPUT_FRAMES
-	end
+	local inputIndex = self:InputIndex()
+	local previousInputIndex = self:InputIndex(-1)
 
 	for i=1,2 do
-		local state = self.playerCommandBuffer[i][self.inputBufferIndex]
-		local previousState = self.playerCommandBuffer[i][previousIndex]
+		local state = self.playerCommandBuffer[i][inputIndex]
+		local previousState = self.playerCommandBuffer[i][previousInputIndex]
 
 		state.up_pressed = state.up and not previousState.up
 		state.down_pressed = state.down and not previousState.down
@@ -94,18 +94,9 @@ end
 -- The update method syncs the keyboard and joystick input with the internal player input state. It also handles syncing the remote player's inputs.
 function InputSystem:Update()
 
-	-- Update the input ring buffer index.
-	self.inputBufferIndex = self.inputBufferIndex + 1
-	if self.inputBufferIndex > InputSystem.MAX_INPUT_FRAMES then
-		self.inputBufferIndex = 1 
-	end
-
 	-- Setup the index used to handle input delay
-	local delayedIndex = self.inputBufferIndex + self.inputDelay
-	-- Wrap around the index to the front of the buffer.
-	if delayedIndex > InputSystem.MAX_INPUT_FRAMES then
-		delayedIndex = delayedIndex - InputSystem.MAX_INPUT_FRAMES + 1
-	end
+	local delayedIndex = self:InputIndex(self.inputDelay)
+
 
 	-- Input polling from the system can be disabled for setting inputs from a buffer. Used in testing rollbacks.
 	if not self.skipPolling then

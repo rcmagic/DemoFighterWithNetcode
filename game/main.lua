@@ -18,6 +18,8 @@ local Game =
 
 	-- Number of ticks since the start of the game.
 	tick = 0
+
+	
 }
 
 -- Resets the game.
@@ -202,6 +204,8 @@ function Game:Draw()
 			love.graphics.print("World Stop", 10, 40)
 		end
 
+		love.graphics.print("Tick: " .. Game.tick, 10, 50)
+
 	end
 
 	-- Shown while the server is running but not connected to a client.
@@ -261,68 +265,152 @@ function love.load()
 
 	-- Store game state before the first update
 	Game:StoreState()
-end
+end	
 
 -- Gets the sync data to confirm the client game states are in sync
 function Game:GetSyncData()
 	-- For now we will just compare the x coordinates of the both players
-	return love.data.pack("string", "nn", self.players[1].physics.xVel, self.players[2].physics.xVel)
+	return love.data.pack("string", "nn", self.players[1].physics.x, self.players[2].physics.x)
 end
 
 -- Checks whether or not a game state desync has occurred between the local and remote clients.
 function Game:SyncCheck()
 
-	-- Handle sync checking. We only perform this check when a game update occurred and have a confirmed tick for the latest frame. 
-	if self.tick == Network.lastSyncedTick then
+	if not NET_DETECT_DESYNCS then 
+		return
+	end
 
-		local checkFrame = self.tick - Network.inputDelay - 1
-		local remoteSyncData = Network:GetSyncDataRemote(checkFrame)
-		local localSyncData = Network:GetSyncDataLocal(checkFrame)
+	if Network.lastSyncedTick < 0 then
+		return
+	end
 
-		-- Compare sync data. We only include sync check data for the latest confirmed frame, so may not always have it.
-		if self.tick > Network.inputDelay and remoteSyncData ~= localSyncData then
-			NetLog("Desync at frame: " .. checkFrame)
-			-- Print the x coordinates so we can see which coordinates are off.
-			local p1x, p2x = love.data.unpack("nn", localSyncData, 1)
-			NetLog("[Local]  P1.x: " .. p1x .. "     P2.x: " .. p2x )
-			local p1x, p2x = love.data.unpack("nn", remoteSyncData, 1)
-			NetLog("[Remote] P1.x: " .. p1x .. "     P2.x: " .. p2x )
+	-- Check desyncs at a fixed rate.
+	if (Network.lastSyncedTick % Network.desyncCheckRate) ~= 0 then
+		return
+	end
 
-			local startTick = (Game.tick+1) - NET_INPUT_HISTORY_SIZE
+	-- Generate the data we'll send to the other player for testing that their game state is in sync.
+	Network:SetLocalSyncData(Network.lastSyncedTick, Game:GetSyncData())
+			
+	-- Send sync data everytime we've applied from the remote player to a game frame.
+	Network:SendSyncData()
+	
 
-			local inputHistory ={ Network.inputHistory, Network.remoteInputHistory}
+	local desynced, desyncFrame = Network:DesyncCheck()
+	if not desynced then
+		return 
+	end
 
-			if InputSystem.localPlayerIndex == 2 then
-				inputHistory = { Network.remoteInputHistory, Network.inputHistory }
+
+	-- Detect when the sync data doesn't match then halt the game
+	NetLog("Desync detected at tick: " .. desyncFrame)
+
+	love.window.showMessageBox( "Alert", "Desync detected", "info", true )
+	-- the log afterward is pretty useless so exiting here. It also helps to know when a desync occurred. 
+	love.event.quit(0)
+end
+
+-- Rollback if needed.
+function HandleRollbacks()
+	local lastGameTick = Game.tick - 1
+	-- The input needed to resync state is available so rollback.
+	-- Network.lastSyncedTick keeps track of the lastest synced game tick.
+	-- When the tick count for the inputs we have is more than the number of synced ticks it's possible to rerun those game updates
+	-- with a rollback.
+	if lastGameTick >= 0 and lastGameTick > (Network.lastSyncedTick + 1) and Network.confirmedTick > Network.lastSyncedTick then
+	
+		-- print("Rolling back at frame " .. lastGameTick )
+
+		-- Must revert back to the last known synced game frame.
+		Game:RestoreState()
+
+		-- The number of frames that's elasped since the game has been out of sync.
+		-- Rerun rollbackFrames number of updates. 
+		local rollbackFrames = lastGameTick - Network.lastSyncedTick
+		
+		-- Prevent polling for input since we set it directly from the input history.
+		InputSystem.skipPolling = true
+		for i=1,rollbackFrames do
+			-- Get input from the input history buffer. The network system will predict input after the last confirmed tick (for the remote player).
+			InputSystem:SetInputState(InputSystem.localPlayerIndex, Network:GetLocalInputState(Game.tick)) -- Offset of 1 ensure it's used for the next game update.
+			InputSystem:SetInputState(InputSystem.remotePlayerIndex, Network:GetRemoteInputState(Game.tick)) 
+
+			local lastRolledBackGameTick = Game.tick
+			Game:Update()
+			Game.tick = Game.tick + 1
+
+			-- Confirm that we are indeed still synced
+			if lastRolledBackGameTick < (Network.confirmedTick - NET_ROLLBACK_MAX_FRAMES) then
+				-- Store the state since we know it's synced. We really only need to call this on the last synced frame. 
+				-- Leaving in for demonstration purposes.
+				Game:StoreState()
+				Network.lastSyncedTick = lastRolledBackGameTick
+				
+				-- Confirm the game clients are in sync
+				Game:SyncCheck()
+			end
+		end
+
+		-- Restore input polling for the regular update
+		InputSystem.skipPolling = false				
+	end
+			
+end
+
+-- Handles testing rollbacks offline.
+function TestRollbacks()
+	if ROLLBACK_TEST_ENABLED then
+		if Game.tick >= ROLLBACK_TEST_FRAMES then
+			local startTime = love.timer.getTime()
+
+			-- Get sync data that we'll test after the rollback 
+			local syncData = love.data.pack("string", "nn", Game.players[1].physics.y, Game.players[2].physics.y)
+
+			Game:RestoreState()
+			
+			-- Prevent polling for input since we set it directly from the input history.
+			InputSystem.skipPolling = true
+			for i=1,ROLLBACK_TEST_FRAMES do
+				-- Get input from a input history buffer that we update below
+				InputSystem:SetInputState(InputSystem.localPlayerIndex, Network:GetLocalInputState(Game.tick))
+				InputSystem:SetInputState(InputSystem.remotePlayerIndex, Network:GetRemoteInputState(Game.tick))
+				
+
+				Game.tick = Game.tick + 1
+				Game:Update()
+
+				-- Store only the first updated state
+				if i == 1 then
+					Game:StoreState()
+				end
 			end
 
+			-- Get the sync data after a rollback and check to see if it matches the data before the rollback.
+			local postSyncData = love.data.pack("string", "nn", Game.players[1].physics.y, Game.players[2].physics.y)
 
-			for i=0, NET_INPUT_HISTORY_SIZE-1 do 
-				local index = ((startTick+i) % NET_INPUT_HISTORY_SIZE)+1
-				local p1x, p2x = love.data.unpack("nn", Network.syncDataHistoryLocal[index], 1)
-
-				NetLog("[Input][" .. (startTick + i) .. "] Local: " .. inputHistory[1][index] .. "     Remote: " .. inputHistory[2][index] .. 
-				"           State: " ..  p1x .. ", " .. p2x)
+			if syncData ~= postSyncData then
+				love.window.showMessageBox( "Alert", "Rollback Desync Detected", "info", true )
+				love.event.quit(0)
 			end
 
-			love.window.showMessageBox( "Alert", "Desync detected", "info", true )
-			-- the log afterward is pretty useless so exiting here. Also helps to know when a desync occurred. 
-			love.event.quit(0)
+			-- Restore input polling for the regular update
+			InputSystem.skipPolling = false
+			--NetLog("Rollback Test Duration: " .. love.timer.getTime() - startTime)
 		end
 	end
 end
-
 -- Used for testing performance. 
 local lastTime = love.timer.getTime()
+function love.update(dt) 
 
-function love.update(dt)
+	local lastGameTick = Game.tick
 
 	local updateGame = false
 
 	if ROLLBACK_TEST_ENABLED then
 		updateGame = true
 	end
-	
+
 	-- The network is update first
 	if Network.enabled then
 		local x = love.timer.getTime()
@@ -340,54 +428,12 @@ function love.update(dt)
 
 		if Network.connectedToClient then
 
-			-- The input needed to resync state is available so rollback.
-			-- Network.lastSyncedTick keeps track of how many game updates have been synced. 
-			-- When the tick count for the inputs we have is more than the number of synced ticks it's possible to rerun those game updates
-			-- with a rollback.
-			if Game.tick > Network.lastSyncedTick and Network.confirmedTick > Network.lastSyncedTick then
+			-- Run any rollbacks that can be processed before the next game update
+			HandleRollbacks()
 			
-				-- The number of frames that's elasped since the game has been out of sync.
-				-- Rerun rollbackFrames number of updates. 
-				local rollbackFrames = Game.tick - Network.lastSyncedTick
-
-				print("Rollback frames: " .. rollbackFrames)
-
-				-- Must revert back to the last known synced game frame.
-				Game:RestoreState()
-				
-				-- Prevent polling for input since we set it directly from the input history.
-				InputSystem.skipPolling = true
-				for i=1,rollbackFrames do
-					-- Get input from the input history buffer. The network system will predict input after the last confirmed tick (for the remote player).
-					InputSystem:SetInputState(InputSystem.localPlayerIndex, Network:GetLocalInputState(Game.tick), 1) -- Offset of 1 ensure it's used for the next game update.
-					InputSystem:SetInputState(InputSystem.remotePlayerIndex, Network:GetRemoteInputState(Game.tick), 1) 
-
-					Game.tick = Game.tick + 1
-					Game:Update()
-
-					-- Confirm that we are indeed still synced
-					if Network.confirmedTick >= Game.tick then
-						-- TODO: Test for state desync here. We will use the remote client's sync test data to ensure the game states don't diverge after a rollback.
-
-						-- Store the state since we know it's synced. We really only need to call this on the last synced frame. 
-						-- Leaving in for demonstration purposes.
-						Game:StoreState()
-						Network.lastSyncedTick = Game.tick
-
-						-- Update sync data
-						Network:SetLocalSyncData(Game.tick+Network.inputDelay-1, Game:GetSyncData())
-						-- Confirm the game clients are in sync
-						Game:SyncCheck()
-					end
-				end
-
-				-- Restore input polling for the regular update
-				InputSystem.skipPolling = false				
-			end
-
 			-- Calculate the difference between remote game tick and the local. This will be used for syncing.
 			-- We don't use the latest local tick, but the tick for the latest input sent to the remote client.
-			Network.localTickDelta = (Game.tick+Network.inputDelay-1) - Network.confirmedTick
+			Network.localTickDelta = (lastGameTick+Network.inputDelay) - Network.confirmedTick
 
 
 			-- Prevent updating the game when the tick difference is greater on this end.
@@ -397,116 +443,78 @@ function love.update(dt)
 			
 			-- Hold until the tick deltas match.
 			if hold then
-				print("Hold. Tick Delta = Local: " .. Network.localTickDelta .. ", Remote: " .. Network.remoteTickDelta)
+				print("Hold. Tick Delta = [ Local: " .. Network.localTickDelta .. ", Remote: " .. Network.remoteTickDelta .. "]")
 				updateGame = false
 			else
 				-- We allow the game to run for NET_ROLLBACK_MAX_FRAMES updates without having input for the current frame.
 				-- Once the game can no longer update, it will wait until the other player's client can catch up.
-				if (Network.confirmedTick + NET_ROLLBACK_MAX_FRAMES) >= Game.tick then
-				
+				if (Network.confirmedTick + NET_ROLLBACK_MAX_FRAMES) >= lastGameTick then
 					updateGame = true
-					-- NetLog("Updating Game. Local Tick: " .. Game.tick .. "    Confirmed Tick: " .. Network.confirmedTick)
-					-- print( (Game.tick - Network.confirmedTick) .. " frames ahead of the confirmed tick.")
 				else
-					--print("Waiting for input at tick " .. Game.tick)
 					updateGame = false
 				end
 			end
 
-
-
 			if updateGame then
-				-- Set the input state for the current tick for the remote player's character.
-				InputSystem:SetInputState(InputSystem.remotePlayerIndex, Network:GetRemoteInputState(Game.tick), 1) -- Offset of 1 ensure it's used for the next game update.
-
+				-- Set the input state fo[r the current tick for the remote player's character.
+				InputSystem:SetInputState(InputSystem.remotePlayerIndex, Network:GetRemoteInputState(lastGameTick))
 			end
 		end
 
 	end
-
+  
 
 	if updateGame then	
 		-- Test rollbacks
-		if ROLLBACK_TEST_ENABLED then
-
-			if Game.tick >= ROLLBACK_TEST_FRAMES then
-				local startTime = love.timer.getTime()
-
-				-- Get sync data that we'll test after the rollback 
-				local syncData = love.data.pack("string", "nn", Game.players[1].physics.y, Game.players[2].physics.y)
-
-				Game:RestoreState()
-				
-				-- Prevent polling for input since we set it directly from the input history.
-				InputSystem.skipPolling = true
-				for i=1,ROLLBACK_TEST_FRAMES do
-					-- Get input from a input history buffer that we update below
-					InputSystem:SetInputState(InputSystem.localPlayerIndex, Network:GetLocalInputState(Game.tick), 1)
-					InputSystem:SetInputState(InputSystem.remotePlayerIndex, Network:GetRemoteInputState(Game.tick), 1)
-
-					Game.tick = Game.tick + 1
-					Game:Update()
-
-					-- Store only the first updated state
-					if i == 1 then
-						Game:StoreState()
-					end
-				end
-
-				-- Get the sync data after a rollback and check to see if it matches the data before the rollback.
-				local postSyncData = love.data.pack("string", "nn", Game.players[1].physics.y, Game.players[2].physics.y)
-
-				if syncData ~= postSyncData then
-					love.window.showMessageBox( "Alert", "Rollback Desync Detected", "info", true )
-					love.event.quit(0)
-				end
-
-				-- Restore input polling for the regular update
-				InputSystem.skipPolling = false
-				--NetLog("Rollback Test Duration: " .. love.timer.getTime() - startTime)
-			end
-		end
+		TestRollbacks()
 
 		-- Increment the tick count only when the game actually updates.
-		Game.tick = Game.tick + 1
 		Game:Update()
-
-		-- Check whether or not the game state is confirmed to be in sync.
-		-- Since we previously rolled back, it's safe to set the lastSyncedTick here since we know any previous frames will be synced.
-		if Network.connectedToClient and Network.confirmedTick >= Game.tick then
-			Game:StoreState()
-			-- Increment the synced tick number if we have inputs
-			Network.lastSyncedTick =  Game.tick
-		end
-
+		Game.tick = Game.tick + 1
 
 		-- Save stage after an update if testing rollbacks
 		if ROLLBACK_TEST_ENABLED then
 			-- Save local input history for this game tick
-			Network:SetLocalInput(InputSystem:GetInputState(InputSystem.localPlayerIndex, 0), Game.tick-1)
+			Network:SetLocalInput(InputSystem:GetInputState(InputSystem.localPlayerIndex, lastGameTick), lastGameTick)
+		end
+	
+
+		if Network.enabled then
+			-- Update local input history
+			local sendInput = InputSystem:GetInputState(InputSystem.localPlayerIndex, lastGameTick + Network.inputDelay)
+			Network:SetLocalInput(sendInput, lastGameTick+Network.inputDelay)
+
+			-- Check whether or not the game state is confirmed to be in sync.
+			-- Since we previously rolled back, it's safe to set the lastSyncedTick here since we know any previous frames will be synced.
+			if  (Network.lastSyncedTick + 1) == lastGameTick and lastGameTick <= Network.confirmedTick then
+
+				-- Increment the synced tick number if we have inputs
+				Network.lastSyncedTick = lastGameTick	
+				
+				-- Applied the remote player's input, so this game frame should synced.
+				Game:StoreState()
+
+				-- Confirm the game clients are in sync
+				Game:SyncCheck()
+ 
+			end
+							
 		end
 	end
-
-
 
 
 	-- Since our input is update in Game:Update() we want to send the input as soon as possible. 
 	-- Previously this as happening before the Game:Update() and adding uneeded latency.  
 	if Network.enabled and Network.connectedToClient  then
-		-- Generate the data we'll send to the other player for testing that their game state is in sync.
-		Network:SetLocalSyncData(Game.tick+Network.inputDelay-1, Game:GetSyncData())
 
-		-- Confirm the game clients are in sync
-		if updateGame then
-			Game:SyncCheck()
-		end
-
-		-- Update local input history
-		Network:SetLocalInput(InputSystem:GetInputState(InputSystem.localPlayerIndex, Network.inputDelay), Game.tick+Network.inputDelay-1)
+		-- if updateGame then
+		-- 	PacketLog("Sending Input: " .. Network:GetLocalInputEncoded(lastGameTick + Network.inputDelay) .. ' @ ' .. lastGameTick + Network.inputDelay  )
+		-- end
 
 		-- Send this player's input state. We when Network.inputDelay frames ahead.
 		-- Note: This input comes from the last game update, so we subtract 1 to set the correct tick.
-		Network:SendInputData(Game.tick+Network.inputDelay-1)
+		Network:SendInputData(Game.tick - 1 + Network.inputDelay)
+
 
 		-- Send ping so we can test network latency.
 		Network:SendPingMessage()

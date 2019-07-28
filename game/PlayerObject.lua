@@ -318,7 +318,7 @@ local emptyInputState = {}
 -- Get State State
 function PlayerObject:GetInputState()
 	if self.inputEnabled then
-		return self.input:GetInputState(self.playerIndex)
+		return self.input:CurrentInputState(self.playerIndex)
 	end
 	return emptyInputState
 end
