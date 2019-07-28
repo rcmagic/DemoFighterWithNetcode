@@ -12,13 +12,14 @@ InputSystem =
 
 	remotePlayerState = {},			-- Store the input state for the remote player.
 
+	polledInput = {{}, {}},			-- Latest polled inputs
+
 	playerCommandBuffer = {{}, {}},	-- A ring buffer. Stores the on/off state for each basic input command.
 
 	inputDelay = 0,					-- Specify how many frames the player's inputs will be delayed by. Used in networking. Increase this value to test delay!
 
 	joysticks = {},					-- Available joysticks 
 
-	skipPolling = false,			-- Prevents polling for input during an update. Used to test rollbacks.
 }
 
 function InputSystem:InputIndex(offset)
@@ -40,7 +41,7 @@ end
 
 -- Used in the rollback system to restore the old state of the input system
 function InputSystem:SetState(state)
-	self.playerCommandBuffer = state.playerCommandBuffer
+	self.playerCommandBuffer = table.deep_copy(state.playerCommandBuffer)
 end
 
 
@@ -54,6 +55,10 @@ function InputSystem:GetInputState(bufferIndex, tick)
 		return {}
 	end
 	return state
+end
+
+function InputSystem:GetLatestInput(bufferIndex)
+	return self.polledInput[bufferIndex]
 end
 
 -- Get the current input state for a player
@@ -78,6 +83,7 @@ end
 function InputSystem:UpdateInputChanges()
 	local inputIndex = self:InputIndex()
 	local previousInputIndex = self:InputIndex(-1)
+	
 
 	for i=1,2 do
 		local state = self.playerCommandBuffer[i][inputIndex]
@@ -91,59 +97,65 @@ function InputSystem:UpdateInputChanges()
 	end
 end
 
--- The update method syncs the keyboard and joystick input with the internal player input state. It also handles syncing the remote player's inputs.
-function InputSystem:Update()
-
-	-- Setup the index used to handle input delay
-	local delayedIndex = self:InputIndex(self.inputDelay)
-
-
+function InputSystem:PollInputs(updateBuffers)
+	
 	-- Input polling from the system can be disabled for setting inputs from a buffer. Used in testing rollbacks.
-	if not self.skipPolling then
-		-- Update the local player's command buffer for the current frame.
-		self.playerCommandBuffer[self.localPlayerIndex][delayedIndex] = table.copy(self.keyboardState)
+	-- Update the local player's command buffer for the current frame.
+	self.polledInput[self.localPlayerIndex] = table.copy(self.keyboardState)
 
-		-- Update the remote player's command buffer.
-		--self.playerCommandBuffer[self.remotePlayerIndex][delayedIndex] = table.copy(self.remotePlayerState)
+	-- Update the remote player's command buffer.
+	--self.playerCommandBuffer[self.remotePlayerIndex][delayedIndex] = table.copy(self.remotePlayerState)
 
-		-- Get buttons from first joysticks
-		for index, joystick in pairs(self.joysticks) do
-			if self.joysticks[1] and (not self.game.network.enabled or (self.localPlayerIndex == index) ) then
+	-- Get buttons from first joysticks
+	for index, joystick in pairs(self.joysticks) do
+		if self.joysticks[1] and (not self.game.network.enabled or (self.localPlayerIndex == index) ) then
 
-				local commandBuffer = self.playerCommandBuffer[index][delayedIndex]
-				local axisX = joystick:getAxis(1)
-				local axisY = joystick:getAxis(2)
-				
-				-- Reset the direction state for this frame.
-				commandBuffer.left = false
-				commandBuffer.right = false
-				commandBuffer.up = false
-				commandBuffer.down = false
-				commandBuffer.attack = false
+			local commandBuffer = self.polledInput[index]
+			local axisX = joystick:getAxis(1)
+			local axisY = joystick:getAxis(2)
+			
+			-- Reset the direction state for this frame.
+			commandBuffer.left = false
+			commandBuffer.right = false
+			commandBuffer.up = false
+			commandBuffer.down = false
+			commandBuffer.attack = false
+			
 
-				-- Indicates the neutral zone of the joystick
-				local axisGap = 0.5
+			-- Indicates the neutral zone of the joystick
+			local axisGap = 0.5
 
-				if axisX > axisGap then
-					commandBuffer.right = true
-				elseif axisX < -axisGap then 
-					commandBuffer.left = true
-				end
-
-				if axisY > axisGap then
-					commandBuffer.down = true
-				elseif axisY < -axisGap then 
-					commandBuffer.up = true
-				end	
-
-				if joystick:isDown(1) then
-					commandBuffer.attack = true
-				end
-
+			if axisX > axisGap then
+				commandBuffer.right = true
+			elseif axisX < -axisGap then 
+				commandBuffer.left = true
 			end
+
+			if axisY > axisGap then
+				commandBuffer.down = true
+			elseif axisY < -axisGap then 
+				commandBuffer.up = true
+			end	
+
+			if joystick:isDown(1) then
+				commandBuffer.attack = true
+			end
+
 		end
 	end
 
+	-- Updated the player input buffers from the polled inputs.  Set to false in network mode.
+	if updateBuffers then
+		local bufferIndex = self:InputIndex()
+		for i=1,2 do
+			self.playerCommandBuffer[bufferIndex] = self.polledInput[bufferIndex]
+		end
+	end
+
+end
+
+-- The update method syncs the keyboard and joystick input with the internal player input state. It also handles syncing the remote player's inputs.
+function InputSystem:Update()
 	-- Update input changes
 	InputSystem:UpdateInputChanges()
 end	
