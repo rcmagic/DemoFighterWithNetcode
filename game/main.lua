@@ -336,7 +336,7 @@ function HandleRollbacks()
 			Game.tick = Game.tick + 1
 
 			-- Confirm that we are indeed still synced
-			if lastRolledBackGameTick < (Network.confirmedTick - NET_ROLLBACK_MAX_FRAMES) then
+			if lastRolledBackGameTick <= Network.confirmedTick then
 				-- Store the state since we know it's synced. We really only need to call this on the last synced frame. 
 				-- Leaving in for demonstration purposes.
 				Game:StoreState()
@@ -425,7 +425,7 @@ function love.update(dt)
 
 			-- Prevent updating the game when the tick difference is greater on this end.
 			-- This allows the game deltas to be off by atleast on frame. Our timing is only accurate to one frame so any slight increase in network latency
-			-- would cause the game to constantly hold. You could increase this tolerance, but this would up the advantage for one player over the other.
+			-- would cause the game to constantly hold. You could increase this tolerance, but this would increase the advantage for one player over the other.
 			local hold = (Network.localTickDelta - Network.remoteTickDelta) > 1 
 			
 			-- Hold until the tick deltas match.
