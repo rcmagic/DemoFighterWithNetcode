@@ -426,7 +426,7 @@ function love.update(dt)
 			-- Prevent updating the game when the tick difference is greater on this end.
 			-- This allows the game deltas to be off by atleast on frame. Our timing is only accurate to one frame so any slight increase in network latency
 			-- would cause the game to constantly hold. You could increase this tolerance, but this would increase the advantage for one player over the other.
-			local hold = (Network.localTickDelta - Network.remoteTickDelta) > 1 
+			local hold = (Network.localTickDelta - Network.remoteTickDelta) > 2 
 			
 			-- Hold until the tick deltas match.
 			if hold then
@@ -435,7 +435,7 @@ function love.update(dt)
 			else
 				-- We allow the game to run for NET_ROLLBACK_MAX_FRAMES updates without having input for the current frame.
 				-- Once the game can no longer update, it will wait until the other player's client can catch up.
-				if (Network.confirmedTick + NET_ROLLBACK_MAX_FRAMES) >= lastGameTick then
+				if lastGameTick <= (Network.confirmedTick + NET_ROLLBACK_MAX_FRAMES) then
 					updateGame = true
 				else
 					updateGame = false
