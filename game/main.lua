@@ -7,6 +7,14 @@ require("Network")			-- Handles networking
 	
 
 
+-- This table stores sync data that will be used for drawing the sync graph.
+local graphTable = {}
+
+for i=0,60-1 do
+	graphTable[1+i*2] = i*10
+	graphTable[1+(i*2 + 1)] = 0
+end
+
 -- Manages the game state
 local Game = 
 {
@@ -156,6 +164,8 @@ function DrawHUD()
 	
 end
 
+
+
 -- Top level drawing function
 function Game:Draw()
 	-- Draw the ground.
@@ -206,7 +216,18 @@ function Game:Draw()
 
 		love.graphics.print("Tick: " .. Game.tick, 10, 50)
 
+		love.graphics.push()
+		love.graphics.translate(0, 200)
+
+		-- Draw sync graph
+		love.graphics.line(0, 0, 10*60, 0)
+		love.graphics.setColor(0, 1, 0)
+		love.graphics.line(graphTable)
+
+		love.graphics.pop()
 	end
+
+
 
 	-- Shown while the server is running but not connected to a client.
 	if Network.isServer and not Network.connectedToClient then
@@ -421,6 +442,8 @@ function love.update(dt)
 			-- Calculate the difference between remote game tick and the local. This will be used for syncing.
 			-- We don't use the latest local tick, but the tick for the latest input sent to the remote client.
 			Network.localTickDelta = (lastGameTick+Network.inputDelay) - Network.confirmedTick
+
+			graphTable[ 1 + (lastGameTick % 60) * 2 + 1  ] = -1*(Network.localTickDelta - Network.remoteTickDelta) * 5
 
 
 			-- Prevent updating the game when the tick difference is greater on this end.
