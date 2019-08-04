@@ -91,15 +91,28 @@ local PlayerColors =
 	{213 / 255, 94 / 255,  0},
 	{86 / 255, 	180 / 255, 233 / 255}
 }
+
+-- Amount of hit shake to apply on hit.
+local shakeAmount = 2
+
 -- Draw the player object
 function PlayerObject:Draw()
+	local xShake = 0
+
+	if self.hitstopTimer > 0 and self.hitstunTimer > 0 then
+		local shakeTick = self.hitstopTimer % 4
+		if shakeTick < 2 then
+			xShake = -shakeAmount
+		else
+			xShake = shakeAmount
+		end
+	end
 	love.graphics.push()
 
 	love.graphics.translate(self.physics.x, -self.physics.y)
+	love.graphics.translate(xShake, 0)
 	love.graphics.setColor(1,1,1)
 
-	local xOff = -25
-	local yOff = -152
 	local xScale = 1
 
 	if self.facing then
@@ -339,7 +352,7 @@ end
 
 -- Used in the rollback system to make a copy of the state of the player.
 function PlayerObject:CopyState()
-	local state = {}
+	local state = {}	
 	state.physics = self.physics:CopyState()   -- The physics system must be rolled back at well.
 
 	state.currentState =  self.currentState
