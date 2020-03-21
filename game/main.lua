@@ -36,9 +36,11 @@ local Game =
 	tick = 0,
 
 	-- The confirmed tick checked the last frame
-	lastConfirmedTick = -1
+	lastConfirmedTick = -1,
 
-	
+	-- Used to force dropped frames to test network syncing code
+	forcePause = false
+
 }
 
 -- Resets the game.
@@ -459,6 +461,10 @@ function love.update(dt)
 
 			-- First we assume that the game can be updated, sync checks below can halt updates
 			updateGame = true
+
+			if Game.forcePause then
+				updateGame = false
+			end
 
 			-- Run any rollbacks that can be processed before the next game update
 			HandleRollbacks()

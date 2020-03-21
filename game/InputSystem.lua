@@ -185,7 +185,8 @@ function love.keypressed(key, scancode, isrepeat)
 		InputSystem.game.frameStep = true
 	elseif key == 'f1' then
 		SHOW_DEBUG_INFO = not SHOW_DEBUG_INFO
-
+	elseif key == "space" then
+		InputSystem.game.forcePause = true;
 	-- Test controls for storing/restoring state.
 	elseif key == 'f7' then
 		InputSystem.game:StoreState()
@@ -215,6 +216,7 @@ function love.keyreleased(key, scancode, isrepeat)
 		InputSystem.keyboardState.right = false
 	elseif key == 'g' then
 		InputSystem.keyboardState.attack = false
+	elseif key == "space" then
+		InputSystem.game.forcePause = false;
 	end
-
 end
