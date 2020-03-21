@@ -15,7 +15,7 @@ function table.array_copy(t)
 		if type(v) == "table" then
 			t2[i] = table.deep_copy(v)
 		else
-			t2[k] = v
+			t2[i] = v
 		end
 	end
 	return t2

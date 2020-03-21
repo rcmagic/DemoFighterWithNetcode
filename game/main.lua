@@ -7,12 +7,20 @@ require("Network")			-- Handles networking
 	
 
 
--- This table stores sync data that will be used for drawing the sync graph.
-local graphTable = {}
+-- This table stores time sync data that will be used for drawing the sync graph.
+local timeSyncGraphTable = {}
 
 for i=0,60-1 do
-	graphTable[1+i*2] = i*10
-	graphTable[1+(i*2 + 1)] = 0
+	timeSyncGraphTable[1+i*2] = i*10
+	timeSyncGraphTable[1+(i*2 + 1)] = 0
+end
+
+-- Table for storing graph data for monitoring the number of rollbacked frames
+local rollbackGraphTable = {}
+
+for i=0,60-1 do
+	rollbackGraphTable[1+i*2] = i*10
+	rollbackGraphTable[1+(i*2 + 1)] = 0
 end
 
 -- Manages the game state
@@ -25,7 +33,10 @@ local Game =
 	frameStep = false,
 
 	-- Number of ticks since the start of the game.
-	tick = 0
+	tick = 0,
+
+	-- The confirmed tick checked the last frame
+	lastConfirmedTick = -1
 
 	
 }
@@ -220,9 +231,15 @@ function Game:Draw()
 		love.graphics.translate(0, 200)
 
 		-- Draw sync graph
+		love.graphics.setColor(1, 1, 1)
+
 		love.graphics.line(0, 0, 10*60, 0)
+
 		love.graphics.setColor(0, 1, 0)
-		love.graphics.line(graphTable)
+		love.graphics.line(timeSyncGraphTable)
+
+		love.graphics.setColor(1, 0, 0)
+		love.graphics.line(rollbackGraphTable)
 
 		love.graphics.pop()
 	end
@@ -338,14 +355,18 @@ function HandleRollbacks()
 	-- Network.lastSyncedTick keeps track of the lastest synced game tick.
 	-- When the tick count for the inputs we have is more than the number of synced ticks it's possible to rerun those game updates
 	-- with a rollback.
+
+	-- The number of frames that's elasped since the game has been out of sync.
+	-- Rerun rollbackFrames number of updates. 
+	rollbackFrames = lastGameTick - Network.lastSyncedTick
+
+	-- Update the graph indicating the number of rollback frames
+	rollbackGraphTable[ 1 + (lastGameTick % 60) * 2 + 1  ] = -1 * rollbackFrames * GRAPH_UNIT_SCALE
+
 	if lastGameTick >= 0 and lastGameTick > (Network.lastSyncedTick + 1) and Network.confirmedTick > Network.lastSyncedTick then
 	
 		-- Must revert back to the last known synced game frame.
 		Game:RestoreState()
-
-		-- The number of frames that's elasped since the game has been out of sync.
-		-- Rerun rollbackFrames number of updates. 
-		local rollbackFrames = lastGameTick - Network.lastSyncedTick
 		
 		for i=1,rollbackFrames do
 			-- Get input from the input history buffer. The network system will predict input after the last confirmed tick (for the remote player).
@@ -436,26 +457,35 @@ function love.update(dt)
 
 		if Network.connectedToClient then
 
+			-- First we assume that the game can be updated, sync checks below can halt updates
+			updateGame = true
+
 			-- Run any rollbacks that can be processed before the next game update
 			HandleRollbacks()
+
 			
 			-- Calculate the difference between remote game tick and the local. This will be used for syncing.
 			-- We don't use the latest local tick, but the tick for the latest input sent to the remote client.
 			Network.localTickDelta = (lastGameTick+Network.inputDelay) - Network.confirmedTick
 
-			graphTable[ 1 + (lastGameTick % 60) * 2 + 1  ] = -1*(Network.localTickDelta - Network.remoteTickDelta) * 5
-
-
-			-- Prevent updating the game when the tick difference is greater on this end.
-			-- This allows the game deltas to be off by atleast on frame. Our timing is only accurate to one frame so any slight increase in network latency
-			-- would cause the game to constantly hold. You could increase this tolerance, but this would increase the advantage for one player over the other.
-			local hold = (Network.localTickDelta - Network.remoteTickDelta) > 2 
+			timeSyncGraphTable[ 1 + (lastGameTick % 60) * 2 + 1  ] = -1 * (Network.localTickDelta - Network.remoteTickDelta) * GRAPH_UNIT_SCALE
 			
-			-- Hold until the tick deltas match.
-			if hold then
-				-- print("Hold. Tick Delta = [ Local: " .. Network.localTickDelta .. ", Remote: " .. Network.remoteTickDelta .. "]")
-				updateGame = false
-			else
+			-- Only do time sync check when the previous confirmed tick from the remote client hasn't been used yet.
+			if Network.confirmedTick > Game.lastConfirmedTick then
+
+				Game.lastConfirmedTick = Network.confirmedTick	
+
+				-- Prevent updating the game when the tick difference is greater on this end.
+				-- This allows the game deltas to be off by 2 frames. Our timing is only accurate to one frame so any slight increase in network latency
+				-- would cause the game to constantly hold. You could increase this tolerance, but this would increase the advantage for one player over the other.
+				if (Network.localTickDelta - Network.remoteTickDelta) > 2 then
+					updateGame = false
+				end
+		
+			end
+
+			-- Only halt the game update based on exceeding the rollback window when the game updated hasn't previously been stopped by time sync code
+			if updateGame then
 				-- We allow the game to run for NET_ROLLBACK_MAX_FRAMES updates without having input for the current frame.
 				-- Once the game can no longer update, it will wait until the other player's client can catch up.
 				if lastGameTick <= (Network.confirmedTick + NET_ROLLBACK_MAX_FRAMES) then
