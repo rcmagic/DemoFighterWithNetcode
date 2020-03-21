@@ -14,7 +14,7 @@ GRAPH_UNIT_SCALE = 5                -- The height scaled use for drawing stat gr
 
 
 -- Network Settings
-SERVER_IP = "::1"				    -- The network address of the other player to connect to. 
+SERVER_IP = "localhost"	 -- The network address of the other player to connect to. 
 
 SERVER_PORT = 12345					-- The network port the server is running on.
 NET_INPUT_DELAY	= 3					-- Amount of input delay to use by default during online matches. Should always be > 0
@@ -23,7 +23,7 @@ NET_DETECT_DESYNCS = true			-- Whether or not desyncs are detected and terminate
 
 NET_INPUT_HISTORY_SIZE = 60			-- The size of the input history buffer. Must be atleast 1.
 NET_SEND_HISTORY_SIZE = 5			-- The number of inputs we send from the input history buffer. Must be atleast 1.
-NET_SEND_DELAY_FRAMES = 5			-- Delay sending packets when this value is great than 0. Set on both clients to not have one ended latency.
+NET_SEND_DELAY_FRAMES = 0			-- Delay sending packets when this value is great than 0. Set on both clients to not have one ended latency.
 
 -- Rollback test settings
 ROLLBACK_TEST_ENABLED   = false

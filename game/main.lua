@@ -38,6 +38,9 @@ local Game =
 	-- The confirmed tick checked the last frame
 	lastConfirmedTick = -1,
 
+	-- Indicates that sync occurred last update
+	syncedLastUpdate = false,
+
 	-- Used to force dropped frames to test network syncing code
 	forcePause = false
 
@@ -484,8 +487,11 @@ function love.update(dt)
 				-- Prevent updating the game when the tick difference is greater on this end.
 				-- This allows the game deltas to be off by 2 frames. Our timing is only accurate to one frame so any slight increase in network latency
 				-- would cause the game to constantly hold. You could increase this tolerance, but this would increase the advantage for one player over the other.
-				if (Network.localTickDelta - Network.remoteTickDelta) > 2 then
+				if (Network.localTickDelta - Network.remoteTickDelta) > 2 and Game.syncedLastUpdate == false then
 					updateGame = false
+					Game.syncedLastUpdate = true
+				else 
+					Game.syncedLastUpdate = false
 				end
 		
 			end
