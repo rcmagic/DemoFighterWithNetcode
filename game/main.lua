@@ -475,7 +475,7 @@ function love.update(dt)
 			
 			-- Calculate the difference between remote game tick and the local. This will be used for syncing.
 			-- We don't use the latest local tick, but the tick for the latest input sent to the remote client.
-			Network.localTickDelta = (lastGameTick+Network.inputDelay) - Network.confirmedTick
+			Network.localTickDelta = lastGameTick - Network.confirmedTick
 
 			timeSyncGraphTable[ 1 + (lastGameTick % 60) * 2 + 1  ] = -1 * (Network.localTickDelta - Network.remoteTickDelta) * GRAPH_UNIT_SCALE
 			
@@ -487,7 +487,12 @@ function love.update(dt)
 				-- Prevent updating the game when the tick difference is greater on this end.
 				-- This allows the game deltas to be off by 2 frames. Our timing is only accurate to one frame so any slight increase in network latency
 				-- would cause the game to constantly hold. You could increase this tolerance, but this would increase the advantage for one player over the other.
-				if (Network.localTickDelta - Network.remoteTickDelta) > 2 and Game.syncedLastUpdate == false then
+				
+				-- Calculate tick offset using the clock synchronization algorithm. 
+				-- See https://en.wikipedia.org/wiki/Network_Time_Protocol#Clock_synchronization_algorithm
+				local tickOffset = (Network.localTickDelta - Network.remoteTickDelta) / 2 
+				
+				if tickOffset > 0 and Game.syncedLastUpdate == false then
 					updateGame = false
 					Game.syncedLastUpdate = true
 				else 
