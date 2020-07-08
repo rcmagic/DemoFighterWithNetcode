@@ -226,6 +226,7 @@ function Game:Draw()
 		love.graphics.print("Hitstun: (".. Game.players[1].hitstunTimer .. ", " .. Game.players[2].hitstunTimer .. ")", 10, 20)
 		love.graphics.print("Hitstop: (".. Game.players[1].hitstopTimer .. ", " .. Game.players[2].hitstopTimer .. ")", 10, 30)
 		love.graphics.print("P1.x: ".. Game.players[1].physics.x .. ", P2.x" .. Game.players[2].physics.x, 10, 40)
+		love.graphics.print("Tick Offset: " .. Network.tickOffset, 10, 60)
 		if World.stop == true then
 			love.graphics.print("World Stop", 10, 40)
 		end
@@ -488,13 +489,28 @@ function love.update(dt)
 				-- This allows the game deltas to be off by 2 frames. Our timing is only accurate to one frame so any slight increase in network latency
 				-- would cause the game to constantly hold. You could increase this tolerance, but this would increase the advantage for one player over the other.
 				
-				-- Calculate tick offset using the clock synchronization algorithm. 
-				-- See https://en.wikipedia.org/wiki/Network_Time_Protocol#Clock_synchronization_algorithm
-				local tickOffset = (Network.localTickDelta - Network.remoteTickDelta) / 2 
-				
-				if tickOffset > 0 and Game.syncedLastUpdate == false then
+				-- Only calculate time sync frames when we are not currently time syncing.
+				if Network.tickSyncing == false then
+					-- Calculate tick offset using the clock synchronization algorithm. 
+					-- See https://en.wikipedia.org/wiki/Network_Time_Protocol#Clock_synchronization_algorithm
+					Network.tickOffset = (Network.localTickDelta - Network.remoteTickDelta) / 2.0
+					
+					-- Only sync when the tick difference is more than one frame.
+					if Network.tickOffset >= 1 then
+						Network.tickSyncing = true
+					end
+				end 
+					
+				if Network.tickSyncing and Game.syncedLastUpdate == false then
 					updateGame = false
 					Game.syncedLastUpdate = true
+					
+					Network.tickOffset = Network.tickOffset - 1
+					
+					-- Stop time syncing when the tick difference is less than 1 so we don't overshoot
+					if Network.tickOffset < 1 then 
+						Network.tickSyncing = false
+					end
 				else 
 					Game.syncedLastUpdate = false
 				end

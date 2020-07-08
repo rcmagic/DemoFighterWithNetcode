@@ -80,6 +80,9 @@ Network =
 	localTickDelta = 0,				-- Stores the difference between the last local tick and the remote confirmed tick. Remote client.
 	remoteTickDelta = 0,			-- Stores the difference between the last local tick and the remote confirmed tick sent from the remote client.
 
+	tickOffset = 0.0,				-- Current difference between remote and local ticks
+	tickSyncing = false,			-- Indicates whether or not the game is currently in time syncing mode.
+
 	desyncCheckRate = 20,			-- The rate at which we check for state desyncs. 
 	localSyncData = nil,			-- Latest local data for state desync checking.
 	remoteSyncData = nil,			-- Latest remote data for state desync checking.
