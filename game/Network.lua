@@ -127,7 +127,7 @@ function Network:StartConnection()
 	self.udp:settimeout(0)
 
 	-- The client can bind to any port since the server will wait on a handshake message and record it later.
-	self.udp:setsockname('*', 0)
+	self.udp:setpeername(self.clientIP, self.clientPort)
 
 	-- Start the connection with the server
 	self:ConnectToServer()
@@ -275,7 +275,11 @@ end
 
 -- Send a packet immediately 
 function Network:SendPacketRaw(packet)
-	self.udp:sendto(packet, self.clientIP, self.clientPort)	
+	if self.isServer then
+		self.udp:sendto(packet, self.clientIP, self.clientPort)
+	else
+		self.udp:send(packet)
+	end
 end
 
 -- Handles receiving packets from the other client.
@@ -285,7 +289,11 @@ function Network:ReceivePacket(packet)
 	local ip_or_msg = nil 
 	local port = nil
 
-	data, ip_or_msg, port = self.udp:receivefrom()
+	if self.isServer then
+		data, ip_or_msg, port = self.udp:receivefrom()
+	else
+		data, ip_or_msg, port = self.udp:receive()
+	end
 
 	if not data then
 		msg = ip_or_msg
